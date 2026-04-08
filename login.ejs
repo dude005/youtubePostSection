@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Login</title>
+
+<style>
+body {
+    margin: 0;
+    background: #0f0f0f;
+    color: white;
+    font-family: Arial, sans-serif;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+}
+
+.card {
+    background:#1e1e1e;
+    padding:25px;
+    border-radius:10px;
+    width:350px;
+    text-align:center;
+}
+
+input {
+    width:100%;
+    padding:10px;
+    margin-top:10px;
+    background:#222;
+    border:none;
+    color:white;
+}
+
+button {
+    width:100%;
+    padding:10px;
+    margin-top:10px;
+    background:#3ea6ff;
+    border:none;
+    cursor:pointer;
+}
+
+img {
+    width:80px;
+    height:80px;
+    border-radius:50%;
+    margin-top:10px;
+    object-fit:cover;
+}
+</style>
+</head>
+
+<body>
+
+<div class="card">
+<h2>MyTube Setup</h2>
+
+<input id="username" placeholder="Username">
+
+<input type="file" id="pfpInput" accept="image/*">
+<img id="pfpPreview">
+
+<input type="file" id="bannerInput" accept="image/*">
+<img id="bannerPreview" style="width:100%; height:100px; border-radius:5px;">
+
+<button onclick="login()">Start</button>
+</div>
+
+<script>
+let pfpData = null;
+let bannerData = null;
+
+pfpInput.onchange = e => {
+    const file = e.target.files[0];
+    const reader = new FileReader();
+    reader.onload = ev => {
+        pfpPreview.src = ev.target.result;
+        pfpData = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+};
+
+bannerInput.onchange = e => {
+    const file = e.target.files[0];
+    const reader = new FileReader();
+    reader.onload = ev => {
+        bannerPreview.src = ev.target.result;
+        bannerData = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+};
+
+async function login(){
+    const username = document.getElementById('username').value;
+    if(!username) return alert("Enter username");
+
+    const res = await fetch('/login', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ username, pfpData, bannerData })
+    });
+
+    if(res.ok) location.href = "/";
+    else alert("Login failed");
+}
+</script>
+
+</body>
+</html>
