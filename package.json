@@ -1,0 +1,18 @@
+{
+  "name": "mytube-app",
+  "version": "1.0.0",
+  "description": "Simple social media app with posts, likes, and polls",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": ["social", "express", "ejs", "app"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ejs": "^3.1.10",
+    "express": "^4.19.2",
+    "express-session": "^1.17.3"
+  }
+}

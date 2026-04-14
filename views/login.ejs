@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+
+<div class="card">
+    <h2>MyTube</h2>
+
+    <input id="username" placeholder="Username">
+
+    <input type="file" id="pfpInput" accept="image/*">
+    <img id="pfpPreview">
+
+    <button onclick="login()">Start</button>
+</div>
+
+<script>
+let pfpData = null;
+
+pfpInput.onchange = e => {
+    const file = e.target.files[0];
+    if (!file || !file.type.startsWith("image/")) return;
+
+    const reader = new FileReader();
+    reader.onload = ev => {
+        pfpPreview.src = ev.target.result;
+        pfpData = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+};
+
+async function login(){
+    const username = document.getElementById('username').value;
+
+    const res = await fetch('/login',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ username, pfpData })
+    });
+
+    if(res.ok) location.href = "/";
+}
+</script>
+
+</body>
+</html>

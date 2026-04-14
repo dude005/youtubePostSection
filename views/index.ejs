@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MyTube</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+
+<body>
+
+<!-- NAVBAR -->
+<div class="nav">
+    <h2>MyTube</h2>
+    <span><%= user.username %></span>
+</div>
+
+<!-- FEED -->
+<div class="feed">
+
+<!-- CREATE POST -->
+<div class="create-post">
+    <form action="/create-post" method="POST" class="create-form">
+        <input name="content" placeholder="What's on your mind?" required>
+        <button>Post</button>
+    </form>
+</div>
+
+<!-- POSTS -->
+<% posts.forEach(p => { %>
+<div class="yt-post">
+
+    <!-- HEADER -->
+    <div class="yt-header">
+        <img src="<%= p.pfp || '/default.png' %>" class="pfp">
+
+        <div>
+            <strong><%= p.author %></strong>
+
+            <!-- SUBSCRIBE -->
+            <% if (user.username !== p.author) { %>
+            <form action="/subscribe/<%= p.author %>" method="POST" style="display:inline;">
+                <button class="sub-btn">
+                    <%= user.subs && user.subs.includes(p.author) ? "Subscribed" : "Subscribe" %>
+                </button>
+            </form>
+            <% } %>
+
+            <div class="time">
+                <%= Math.floor((Date.now() - p.createdAt)/1000) %> sec ago
+            </div>
+        </div>
+    </div>
+
+    <!-- CONTENT -->
+    <p><%= p.content %></p>
+
+    <!-- ACTIONS -->
+    <div class="yt-actions">
+        <form action="/like/<%= p.id %>" method="POST">
+            <button>👍 <%= p.likes.length %></button>
+        </form>
+
+        <form action="/dislike/<%= p.id %>" method="POST">
+            <button>👎 <%= p.dislikes.length %></button>
+        </form>
+    </div>
+
+    <!-- COMMENT INPUT -->
+    <form action="/comment/<%= p.id %>" method="POST">
+        <input name="text" placeholder="Add a comment..." required>
+        <button>Comment</button>
+    </form>
+
+    <!-- COMMENTS -->
+    <% p.comments.forEach(c => { %>
+    <div class="comment">
+        <strong><%= c.author %></strong>
+        <span class="time">
+            <%= Math.floor((Date.now() - c.createdAt)/1000) %> sec ago
+        </span>
+
+        <p><%= c.text %></p>
+
+        <!-- REPLY INPUT -->
+        <form action="/reply/<%= p.id %>/<%= c.id %>" method="POST">
+            <input name="text" placeholder="Reply..." required>
+            <button>Reply</button>
+        </form>
+
+        <!-- REPLIES -->
+        <div class="replies">
+        <% c.replies.forEach(r => { %>
+            <div class="reply">
+                <strong><%= r.author %></strong>
+                <span class="time">
+                    <%= Math.floor((Date.now() - r.createdAt)/1000) %> sec ago
+                </span>
+                <p><%= r.text %></p>
+            </div>
+        <% }) %>
+        </div>
+
+    </div>
+    <% }) %>
+
+</div>
+<% }) %>
+
+</div>
+
+<!-- CHAT -->
+<div class="chat-box">
+    <div id="messages"></div>
+    <input id="msgInput" placeholder="Chat...">
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+
+<script>
+const socket = io();
+
+const msgInput = document.getElementById("msgInput");
+const messages = document.getElementById("messages");
+
+// SEND MESSAGE
+msgInput.addEventListener("keypress", e => {
+    if(e.key === "Enter"){
+        socket.emit("chat message", msgInput.value);
+        msgInput.value = "";
+    }
+});
+
+// RECEIVE MESSAGE
+socket.on("chat message", msg => {
+    const div = document.createElement("div");
+    div.textContent = msg;
+    messages.appendChild(div);
+});
+</script>
+
+</body>
+</html>

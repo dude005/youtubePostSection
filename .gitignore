@@ -1,0 +1,7 @@
+node_modules/
+sessions/
+db.json
+*.png
+*.jpg
+*.jpeg
+*.gif
