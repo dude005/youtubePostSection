@@ -13,6 +13,7 @@
 <div class="nav">
     <h2>MyTube</h2>
     <div class="nav-right">
+        <button class="sort-btn" onclick="toggleSort()">📅 <span id="sortLabel">Newest</span></button>
         <span class="sub-count" id="subCount"><%= user.subs ? user.subs.length : 0 %></span>
         <span class="username"><%= user.username %></span>
         <img src="<%= user.pfp || '/default.png' %>" class="nav-pfp">
@@ -161,6 +162,7 @@
 <script>
 const socket = io();
 const currentUser = "<%= user.username %>";
+let sortNewest = true;
 
 function formatTime(timestamp) {
     const seconds = Math.floor((Date.now() - timestamp) / 1000);
@@ -325,12 +327,47 @@ socket.on("newSubscriber", (data) => {
     document.getElementById('subCount').textContent = count + 1;
 });
 
+// Realtime: new post
+socket.on("newPost", (post) => {
+    showNotification(post.author + " posted something!");
+    location.reload();
+});
+
+// Realtime: post deleted
+socket.on("postDeleted", (postId) => {
+    const post = document.getElementById('post-' + postId);
+    if (post) post.remove();
+});
+
+// Realtime: new comment
+socket.on("newComment", (data) => {
+    showNotification(data.author + " commented on your post");
+});
+
+// Realtime: like update
+socket.on("likeUpdate", (data) => {
+    const countEl = document.getElementById('like-count-' + data.postId);
+    if (countEl) countEl.textContent = data.count;
+});
+
+// Realtime: dislike update
+socket.on("dislikeUpdate", (data) => {
+    const countEl = document.getElementById('dislike-count-' + data.postId);
+    if (countEl) countEl.textContent = data.count;
+});
+
 function showNotification(message) {
     const div = document.createElement("div");
     div.className = "notification";
     div.textContent = message;
     document.getElementById("notifications").appendChild(div);
     setTimeout(() => div.remove(), 5000);
+}
+
+function toggleSort() {
+    sortNewest = !sortNewest;
+    document.getElementById('sortLabel').textContent = sortNewest ? 'Newest' : 'Popular';
+    socket.emit('requestPosts', { sort: sortNewest ? 'newest' : 'popular' });
 }
 
 let chatOpen = true;

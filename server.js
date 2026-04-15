@@ -139,9 +139,17 @@ app.get('/', (req, res) => {
         banner: currentUser.banner
     } : req.session.user;
 
+    const sort = req.query.sort || 'newest';
+    let posts = [...db.posts];
+    if (sort === 'popular') {
+        posts.sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0));
+    } else {
+        posts.sort((a, b) => b.createdAt - a.createdAt);
+    }
+    
     res.render('index', {
         user: userData,
-        posts: db.posts,
+        posts: posts,
         formatTime: (ts) => {
             const seconds = Math.floor((Date.now() - ts) / 1000);
             if (seconds < 60) return seconds + 's';
@@ -200,6 +208,7 @@ app.post('/like/:id', (req, res) => {
     if (!post.likes.includes(req.session.user.username)) {
         post.likes.push(req.session.user.username);
         post.dislikes = post.dislikes.filter(u => u !== req.session.user.username);
+        io.emit('likeUpdate', { postId: req.params.id, count: post.likes.length });
     }
 
     saveDB(db);
@@ -214,6 +223,7 @@ app.post('/dislike/:id', (req, res) => {
     if (!post.dislikes.includes(req.session.user.username)) {
         post.dislikes.push(req.session.user.username);
         post.likes = post.likes.filter(u => u !== req.session.user.username);
+        io.emit('dislikeUpdate', { postId: req.params.id, count: post.dislikes.length });
     }
 
     saveDB(db);
@@ -334,7 +344,7 @@ io.on('connection', (socket) => {
     });
     
     socket.on('comment', (data) => {
-        io.emit('comment', data);
+        io.emit('newComment', data);
     });
     
     socket.on('subscribe', (data) => {
@@ -343,6 +353,17 @@ io.on('connection', (socket) => {
         if (user) {
             socket.broadcast.emit('newSubscriber', { user: data.user, subscriber: data.subscriber });
         }
+    });
+    
+    socket.on('requestPosts', (data) => {
+        const db = loadDB();
+        let posts = db.posts;
+        if (data.sort === 'popular') {
+            posts = posts.sort((a, b) => b.likes.length - a.likes.length);
+        } else {
+            posts = posts.sort((a, b) => b.createdAt - a.createdAt);
+        }
+        socket.emit('postsUpdate', posts);
     });
 });
 

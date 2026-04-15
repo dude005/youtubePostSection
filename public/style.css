@@ -64,6 +64,16 @@ html, body {
     text-decoration: none;
 }
 
+.sort-btn {
+    background: #3a3a3a;
+    border: none;
+    padding: 5px 12px;
+    border-radius: 15px;
+    color: white;
+    cursor: pointer;
+    font-size: 12px;
+}
+
 .delete-btn {
     background: #ff0000;
     border: none;
