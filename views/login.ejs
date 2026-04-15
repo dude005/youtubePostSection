@@ -11,16 +11,20 @@
 <div class="card">
     <h2>MyTube</h2>
 
-    <input id="username" placeholder="Username">
-
+    <input type="text" id="username" placeholder="Username">
+    <br>
     <input type="file" id="pfpInput" accept="image/*">
     <img id="pfpPreview">
 
-    <button onclick="login()">Start</button>
+    <input type="file" id="bannerInput" accept="image/*">
+    <img id="bannerPreview">
+
+    <button type="button" onclick="login()">Start</button>
 </div>
 
 <script>
 let pfpData = null;
+let bannerData = null;
 
 pfpInput.onchange = e => {
     const file = e.target.files[0];
@@ -34,13 +38,25 @@ pfpInput.onchange = e => {
     reader.readAsDataURL(file);
 };
 
+bannerInput.onchange = e => {
+    const file = e.target.files[0];
+    if (!file || !file.type.startsWith("image/")) return;
+
+    const reader = new FileReader();
+    reader.onload = ev => {
+        bannerPreview.src = ev.target.result;
+        bannerData = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+};
+
 async function login(){
     const username = document.getElementById('username').value;
 
     const res = await fetch('/login',{
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ username, pfpData })
+        body: JSON.stringify({ username, pfpData, bannerData })
     });
 
     if(res.ok) location.href = "/";

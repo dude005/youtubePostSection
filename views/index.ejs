@@ -4,6 +4,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MyTube</title>
 <link rel="stylesheet" href="/style.css">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
 </head>
 
 <body>
@@ -11,7 +12,12 @@
 <!-- NAVBAR -->
 <div class="nav">
     <h2>MyTube</h2>
-    <span><%= user.username %></span>
+    <div class="nav-right">
+        <span class="sub-count" id="subCount"><%= user.subs ? user.subs.length : 0 %></span>
+        <span class="username"><%= user.username %></span>
+        <img src="<%= user.pfp || '/default.png' %>" class="nav-pfp">
+        <a href="/logout" class="logout-btn">Logout</a>
+    </div>
 </div>
 
 <!-- FEED -->
@@ -19,89 +25,120 @@
 
 <!-- CREATE POST -->
 <div class="create-post">
-    <form action="/create-post" method="POST" class="create-form">
-        <input name="content" placeholder="What's on your mind?" required>
-        <button>Post</button>
+    <form id="createPostForm" class="create-form">
+        <textarea name="content" placeholder="What's on your mind?" rows="2" required></textarea>
+        <div class="media-buttons">
+            <label class="media-btn">
+                <img src="/image.png" width="20"> Image
+                <input type="file" accept="image/*" onchange="handleImage(this)" hidden>
+            </label>
+            <label class="media-btn">
+                <video src="/video.png" width="20"> Video
+                <input type="file" accept="video/*" onchange="handleVideo(this)" hidden>
+            </label>
+            <label class="media-btn">
+                <img src="/gif.png" width="20"> GIF
+                <input type="file" accept="image/gif" onchange="handleGif(this)" hidden>
+            </label>
+        </div>
+        <div id="mediaPreview"></div>
+        <button type="button" onclick="createPost()">Post</button>
     </form>
 </div>
 
 <!-- POSTS -->
 <% posts.forEach(p => { %>
-<div class="yt-post">
+<div class="yt-post" id="post-<%= p.id %>">
+
+    <% if (p.banner) { %>
+    <div class="post-banner"><img src="<%= p.banner %>"></div>
+    <% } %>
 
     <!-- HEADER -->
     <div class="yt-header">
         <img src="<%= p.pfp || '/default.png' %>" class="pfp">
 
         <div>
-            <strong><%= p.author %></strong>
+            <strong class="author-name"><%= p.author %></strong>
 
-            <!-- SUBSCRIBE -->
             <% if (user.username !== p.author) { %>
-            <form action="/subscribe/<%= p.author %>" method="POST" style="display:inline;">
-                <button class="sub-btn">
-                    <%= user.subs && user.subs.includes(p.author) ? "Subscribed" : "Subscribe" %>
-                </button>
-            </form>
+            <button class="sub-btn" onclick="subscribe('<%= p.author %>')">
+                <%= user.subs && user.subs.includes(p.author) ? "Subscribed" : "Subscribe" %>
+            </button>
+            <% } else { %>
+            <button class="delete-btn" onclick="deletePost('<%= p.id %>')">Delete</button>
             <% } %>
 
-            <div class="time">
-                <%= Math.floor((Date.now() - p.createdAt)/1000) %> sec ago
+            <div class="time" data-time="<%= p.createdAt %>">
+                <%= formatTime(p.createdAt) %>
             </div>
         </div>
     </div>
 
     <!-- CONTENT -->
+    <% if (p.content) { %>
     <p><%= p.content %></p>
+    <% } %>
+
+    <!-- MEDIA -->
+    <% if (p.image) { %>
+    <img src="<%= p.image %>" class="post-media">
+    <% } %>
+    <% if (p.gif) { %>
+    <img src="<%= p.gif %>" class="post-media post-gif" autoplay loop>
+    <% } %>
+    <% if (p.video) { %>
+    <video src="<%= p.video %>" controls class="post-media"></video>
+    <% } %>
 
     <!-- ACTIONS -->
     <div class="yt-actions">
-        <form action="/like/<%= p.id %>" method="POST">
-            <button>👍 <%= p.likes.length %></button>
-        </form>
-
-        <form action="/dislike/<%= p.id %>" method="POST">
-            <button>👎 <%= p.dislikes.length %></button>
-        </form>
+        <button onclick="like('<%= p.id %>')" class="like-btn" id="like-<%= p.id %>">👍 <span id="like-count-<%= p.id %>"><%= p.likes.length %></span></button>
+        <button onclick="dislike('<%= p.id %>')" class="dislike-btn" id="dislike-<%= p.id %>">👎 <span id="dislike-count-<%= p.id %>"><%= p.dislikes.length %></span>
     </div>
 
     <!-- COMMENT INPUT -->
-    <form action="/comment/<%= p.id %>" method="POST">
-        <input name="text" placeholder="Add a comment..." required>
-        <button>Comment</button>
-    </form>
+    <div class="comment-form">
+        <input id="comment-input-<%= p.id %>" placeholder="Add a comment..." onkeypress="if(event.key==='Enter')comment('<%= p.id %>')">
+        <button onclick="comment('<%= p.id %>')">Comment</button>
+    </div>
 
     <!-- COMMENTS -->
+    <div class="comments" id="comments-<%= p.id %>">
     <% p.comments.forEach(c => { %>
-    <div class="comment">
-        <strong><%= c.author %></strong>
-        <span class="time">
-            <%= Math.floor((Date.now() - c.createdAt)/1000) %> sec ago
-        </span>
+        <div class="comment" id="comment-<%= c.id %>">
+            <img src="<%= c.pfp || '/default.png' %>" class="comment-pfp">
+            <div class="comment-content">
+                <span class="comment-author"><%= c.author %></span>
+                <% const commentLikes = c.likes || []; %>
+                <% const commentDislikes = c.dislikes || []; %>
+                <span class="time" data-time="<%= c.createdAt %>"><%= formatTime(c.createdAt) %></span>
+                <span class="comment-stats">👍 <%= commentLikes.length %> 👎 <%= commentDislikes.length %></span>
+                <p><%= c.text %></p>
 
-        <p><%= c.text %></p>
+                <div class="comment-actions">
+                    <button class="comment-like-btn" onclick="likeComment('<%= p.id %>','<%= c.id %>')">👍</button>
+                    <button class="comment-dislike-btn" onclick="dislikeComment('<%= p.id %>','<%= c.id %>')">👎</button>
+                </div>
 
-        <!-- REPLY INPUT -->
-        <form action="/reply/<%= p.id %>/<%= c.id %>" method="POST">
-            <input name="text" placeholder="Reply..." required>
-            <button>Reply</button>
-        </form>
+                <div class="reply-form">
+                    <input id="reply-input-<%= p.id %>-<%= c.id %>" placeholder="Reply..." onkeypress="if(event.key==='Enter')reply('<%= p.id %>','<%= c.id %>')">
+                    <button onclick="reply('<%= p.id %>','<%= c.id %>')">Reply</button>
+                </div>
 
-        <!-- REPLIES -->
-        <div class="replies">
-        <% c.replies.forEach(r => { %>
-            <div class="reply">
-                <strong><%= r.author %></strong>
-                <span class="time">
-                    <%= Math.floor((Date.now() - r.createdAt)/1000) %> sec ago
-                </span>
-                <p><%= r.text %></p>
+                <div class="replies">
+                <% c.replies.forEach(r => { %>
+                    <div class="reply">
+                        <span class="reply-author"><%= r.author %></span>
+                        <span class="time" data-time="<%= r.createdAt %>"><%= formatTime(r.createdAt) %></span>
+                        <p><%= r.text %></p>
+                    </div>
+                <% }) %>
+                </div>
             </div>
-        <% }) %>
         </div>
-
-    </div>
     <% }) %>
+    </div>
 
 </div>
 <% }) %>
@@ -110,32 +147,197 @@
 
 <!-- CHAT -->
 <div class="chat-box">
-    <div id="messages"></div>
-    <input id="msgInput" placeholder="Chat...">
+    <div class="chat-toggle" onclick="toggleChat()">💬</div>
+    <div class="chat-content" id="chatContent">
+        <div id="messages"></div>
+        <input id="msgInput" placeholder="Chat..." onkeypress="if(event.key==='Enter')sendChat()">
+    </div>
 </div>
+
+<div id="notifications"></div>
 
 <script src="/socket.io/socket.io.js"></script>
 
 <script>
 const socket = io();
+const currentUser = "<%= user.username %>";
 
-const msgInput = document.getElementById("msgInput");
-const messages = document.getElementById("messages");
+function formatTime(timestamp) {
+    const seconds = Math.floor((Date.now() - timestamp) / 1000);
+    if (seconds < 60) return seconds + 's';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return minutes + 'm';
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return hours + 'h';
+    const days = Math.floor(hours / 24);
+    if (days < 30) return days + 'd';
+    return Math.floor(days / 30) + 'mo';
+}
 
-// SEND MESSAGE
-msgInput.addEventListener("keypress", e => {
-    if(e.key === "Enter"){
-        socket.emit("chat message", msgInput.value);
-        msgInput.value = "";
+setInterval(() => {
+    document.querySelectorAll('.time[data-time]').forEach(el => {
+        el.textContent = formatTime(parseInt(el.dataset.time));
+    });
+}, 60000);
+
+let postImage = null;
+let postVideo = null;
+let postGif = null;
+
+function toBase64(file, callback) {
+    const reader = new FileReader();
+    reader.onload = () => callback(reader.result);
+    reader.readAsDataURL(file);
+}
+
+function handleImage(input) {
+    if (input.files[0]) {
+        toBase64(input.files[0], (base64) => {
+            postImage = base64;
+            showMediaPreview();
+        });
     }
+}
+
+function handleVideo(input) {
+    if (input.files[0]) {
+        toBase64(input.files[0], (base64) => {
+            postVideo = base64;
+            showMediaPreview();
+        });
+    }
+}
+
+function handleGif(input) {
+    if (input.files[0]) {
+        toBase64(input.files[0], (base64) => {
+            postGif = base64;
+            showMediaPreview();
+        });
+    }
+}
+
+function showMediaPreview() {
+    let html = '';
+    if (postImage) html += '<img src="' + postImage + '" class="preview-thumb">';
+    if (postVideo) html += '<video src="' + postVideo + '" class="preview-thumb">';
+    if (postGif) html += '<img src="' + postGif + '" class="preview-thumb">';
+    document.getElementById('mediaPreview').innerHTML = html;
+}
+
+function createPost() {
+    const content = document.querySelector('#createPostForm textarea').value;
+    if (!content.trim() && !postImage && !postVideo && !postGif) return;
+    
+    const formData = new URLSearchParams();
+    formData.append('content', content);
+    if (postImage) formData.append('image', postImage);
+    if (postVideo) formData.append('video', postVideo);
+    if (postGif) formData.append('gif', postGif);
+    
+    fetch('/create-post', {
+        method: 'POST',
+        body: formData
+    }).then(() => {
+        postImage = postVideo = postGif = null;
+        location.reload();
+    });
+}
+
+function like(postId) {
+    fetch('/like/' + postId, { method: 'POST' });
+    const count = document.getElementById('like-count-' + postId);
+    count.textContent = parseInt(count.textContent) + 1;
+    socket.emit('like', { postId, user: currentUser });
+}
+
+function dislike(postId) {
+    fetch('/dislike/' + postId, { method: 'POST' });
+    const count = document.getElementById('dislike-count-' + postId);
+    count.textContent = parseInt(count.textContent) + 1;
+}
+
+function comment(postId) {
+    const input = document.getElementById('comment-input-' + postId);
+    const text = input.value;
+    if (!text.trim()) return;
+    
+    fetch('/comment/' + postId, {
+        method: 'POST',
+        body: 'text=' + encodeURIComponent(text)
+    }).then(() => location.reload());
+}
+
+function reply(postId, commentId) {
+    const input = document.getElementById('reply-input-' + postId + '-' + commentId);
+    const text = input.value;
+    if (!text.trim()) return;
+    
+    fetch('/reply/' + postId + '/' + commentId, {
+        method: 'POST',
+        body: 'text=' + encodeURIComponent(text)
+    }).then(() => location.reload());
+}
+
+function deletePost(postId) {
+    if (confirm('Delete this post?')) {
+        fetch('/delete-post/' + postId, { method: 'POST' }).then(() => location.reload());
+    }
+}
+
+function likeComment(postId, commentId) {
+    fetch('/like-comment/' + postId + '/' + commentId, { method: 'POST' });
+}
+
+function dislikeComment(postId, commentId) {
+    fetch('/dislike-comment/' + postId + '/' + commentId, { method: 'POST' });
+}
+
+function subscribe(username) {
+    fetch('/subscribe/' + username, { method: 'POST' }).then(() => {
+        const count = parseInt(document.getElementById('subCount').textContent);
+        document.getElementById('subCount').textContent = count + 1;
+    });
+    socket.emit('subscribe', { user: username, subscriber: currentUser });
+}
+
+function sendChat() {
+    const input = document.getElementById('msgInput');
+    if (input.value.trim()) {
+        socket.emit("chat message", { user: currentUser, text: input.value });
+        input.value = "";
+    }
+}
+
+socket.on("chat message", (msg) => {
+    const div = document.createElement("div");
+    div.textContent = msg.user + ": " + msg.text;
+    document.getElementById("messages").appendChild(div);
 });
 
-// RECEIVE MESSAGE
-socket.on("chat message", msg => {
-    const div = document.createElement("div");
-    div.textContent = msg;
-    messages.appendChild(div);
+socket.on("newPost", (post) => {
+    showNotification(post.author + " posted something!");
 });
+
+socket.on("newSubscriber", (data) => {
+    showNotification(data.subscriber + " subscribed to you!");
+    const count = parseInt(document.getElementById('subCount').textContent);
+    document.getElementById('subCount').textContent = count + 1;
+});
+
+function showNotification(message) {
+    const div = document.createElement("div");
+    div.className = "notification";
+    div.textContent = message;
+    document.getElementById("notifications").appendChild(div);
+    setTimeout(() => div.remove(), 5000);
+}
+
+let chatOpen = true;
+function toggleChat() {
+    chatOpen = !chatOpen;
+    document.getElementById("chatContent").style.display = chatOpen ? "block" : "none";
+}
 </script>
 
 </body>
