@@ -1,6 +1,29 @@
 # MyTube - Feature History
 
-## v1.0 (Latest - Commit: c3325db)
+## v1.1 (Latest - Commit: 96bc1eb)
+**Date:** 2026-04-16
+**Status:** STABLE
+
+### Features:
+- Fully realtime - all actions update without page reload
+- Livestream-style chat (persists, stored in server memory)
+- Subscribe/Unsubscribe toggle button
+- Sub count shows YOUR subscribers (personalized)
+- Chat history persists when page reloads
+- Nested replies on comments (click Reply to reply)
+- Comment likes/dislikes with counts
+- Delete comments
+- Complete mobile responsive design (360px - 768px+)
+- Clean modern UI with Roboto font
+
+### Fixes:
+- Chat messages no longer disappear on post
+- Sub count shows correctly for each user
+- All realtime socket updates working
+
+---
+
+## v1.0 (Commit: c3325db)
 **Date:** 2026-04-15
 **Status:** STABLE - First Working Version
 
@@ -11,20 +34,17 @@
 - Create posts with text, images, videos, GIFs
 - Banner displayed at top of posts
 - Like/Dislike posts with count display
-- Realtime like/dislike count updates
 - Comment on posts
 - Like/Dislike comments
 - Reply to comments
 - Subscribe to channels
 - Subscriber count badge (red) in navbar
-- Real-time notifications (likes, comments, subs, new posts)
+- Real-time notifications
 - Chat room (Socket.io)
 - Sort posts by Newest or Popular
 - Delete own posts
 - Logout functionality
 - Session persists 24 hours
-- Mobile responsive design
-- Roboto font
 
 ---
 
@@ -37,21 +57,6 @@
 - Logout button
 - Delete posts
 - Comment likes/dislikes
-
----
-
-## v0.0 (Commit: 4403a54)
-**Date:** 2026-04-15
-**Status:** ALPHA
-
-### Features:
-- Basic login
-- Profile pictures
-- Create posts
-- Like/Dislike
-- Comments + Replies
-- Subscribe
-- Chat
 
 ---
 
