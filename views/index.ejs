@@ -10,11 +10,11 @@
 <body>
 
 <!-- NAVBAR -->
-<div class="nav">
-    <h2>MyTube</h2>
-    <div class="nav-right">
+<div class="navbar">
+    <h2 class="logo">MyTube</h2>
+    <div class="navbar-right">
         <button class="sort-btn" onclick="toggleSort()">📅 <span id="sortLabel">Newest</span></button>
-        <span class="sub-count" id="subCount"><%= user.subs ? user.subs.length : 0 %></span>
+        <div class="sub-badge"><span id="mySubCount"><%= user.subsCount || 0 %></span> Subs</div>
         <span class="username"><%= user.username %></span>
         <img src="<%= user.pfp || '/default.png' %>" class="nav-pfp">
         <a href="/logout" class="logout-btn">Logout</a>
@@ -22,269 +22,240 @@
 </div>
 
 <!-- FEED -->
-<div class="feed">
+<div class="feed" id="feed">
 
 <!-- CREATE POST -->
-<div class="create-post">
-    <form id="createPostForm" class="create-form">
-        <textarea name="content" placeholder="What's on your mind?" rows="2" required></textarea>
-        <div class="media-buttons">
-            <label class="media-btn">
-                <img src="/image.png" width="20"> Image
-                <input type="file" accept="image/*" onchange="handleImage(this)" hidden>
-            </label>
-            <label class="media-btn">
-                <video src="/video.png" width="20"> Video
-                <input type="file" accept="video/*" onchange="handleVideo(this)" hidden>
-            </label>
-            <label class="media-btn">
-                <img src="/gif.png" width="20"> GIF
-                <input type="file" accept="image/gif" onchange="handleGif(this)" hidden>
-            </label>
+<div class="create-post-box">
+    <div class="create-post-header">
+        <img src="<%= user.pfp || '/default.png' %>" class="create-pfp">
+        <textarea id="postContent" placeholder="What's on your mind?" rows="2"></textarea>
+    </div>
+    <div id="mediaPreview" class="media-preview"></div>
+    <div class="create-post-actions">
+        <div class="media-btns">
+            <label class="media-btn">📷 Image<input type="file" accept="image/*" onchange="handleMedia(this, 'image')" hidden></label>
+            <label class="media-btn">🎬 Video<input type="file" accept="video/*" onchange="handleMedia(this, 'video')" hidden></label>
+            <label class="media-btn">🎞️ GIF<input type="file" accept="image/gif" onchange="handleMedia(this, 'gif')" hidden></label>
         </div>
-        <div id="mediaPreview"></div>
-        <button type="button" onclick="createPost()">Post</button>
-    </form>
-</div>
-
-<!-- POSTS -->
-<% posts.forEach(p => { %>
-<div class="yt-post" id="post-<%= p.id %>">
-
-    <% if (p.banner) { %>
-    <div class="post-banner"><img src="<%= p.banner %>"></div>
-    <% } %>
-
-    <!-- HEADER -->
-    <div class="yt-header">
-        <img src="<%= p.pfp || '/default.png' %>" class="pfp">
-
-        <div>
-            <strong class="author-name"><%= p.author %></strong>
-
-            <% if (user.username !== p.author) { %>
-            <button class="sub-btn" onclick="subscribe('<%= p.author %>')">
-                <%= user.subs && user.subs.includes(p.author) ? "Subscribed" : "Subscribe" %>
-            </button>
-            <% } else { %>
-            <button class="delete-btn" onclick="deletePost('<%= p.id %>')">Delete</button>
-            <% } %>
-
-            <div class="time" data-time="<%= p.createdAt %>">
-                <%= formatTime(p.createdAt) %>
-            </div>
-        </div>
-    </div>
-
-    <!-- CONTENT -->
-    <% if (p.content) { %>
-    <p><%= p.content %></p>
-    <% } %>
-
-    <!-- MEDIA -->
-    <% if (p.image) { %>
-    <img src="<%= p.image %>" class="post-media">
-    <% } %>
-    <% if (p.gif) { %>
-    <img src="<%= p.gif %>" class="post-media post-gif" autoplay loop>
-    <% } %>
-    <% if (p.video) { %>
-    <video src="<%= p.video %>" controls class="post-media"></video>
-    <% } %>
-
-    <!-- ACTIONS -->
-    <div class="yt-actions">
-        <button onclick="like('<%= p.id %>')" class="like-btn" id="like-<%= p.id %>">👍 <span id="like-count-<%= p.id %>"><%= p.likes.length %></span></button>
-        <button onclick="dislike('<%= p.id %>')" class="dislike-btn" id="dislike-<%= p.id %>">👎 <span id="dislike-count-<%= p.id %>"><%= p.dislikes.length %></span>
-    </div>
-
-    <!-- COMMENT INPUT -->
-    <div class="comment-form">
-        <input id="comment-input-<%= p.id %>" placeholder="Add a comment..." onkeypress="if(event.key==='Enter')comment('<%= p.id %>')">
-        <button onclick="comment('<%= p.id %>')">Comment</button>
-    </div>
-
-    <!-- COMMENTS -->
-    <div class="comments" id="comments-<%= p.id %>">
-    <% p.comments.forEach(c => { %>
-        <div class="comment" id="comment-<%= c.id %>">
-            <img src="<%= c.pfp || '/default.png' %>" class="comment-pfp">
-            <div class="comment-content">
-                <span class="comment-author"><%= c.author %></span>
-                <% const commentLikes = c.likes || []; %>
-                <% const commentDislikes = c.dislikes || []; %>
-                <span class="time" data-time="<%= c.createdAt %>"><%= formatTime(c.createdAt) %></span>
-                <span class="comment-stats">👍 <%= commentLikes.length %> 👎 <%= commentDislikes.length %></span>
-                <p><%= c.text %></p>
-
-                <div class="comment-actions">
-                    <button class="comment-like-btn" onclick="likeComment('<%= p.id %>','<%= c.id %>')">👍</button>
-                    <button class="comment-dislike-btn" onclick="dislikeComment('<%= p.id %>','<%= c.id %>')">👎</button>
-                </div>
-
-                <div class="reply-form">
-                    <input id="reply-input-<%= p.id %>-<%= c.id %>" placeholder="Reply..." onkeypress="if(event.key==='Enter')reply('<%= p.id %>','<%= c.id %>')">
-                    <button onclick="reply('<%= p.id %>','<%= c.id %>')">Reply</button>
-                </div>
-
-                <div class="replies">
-                <% c.replies.forEach(r => { %>
-                    <div class="reply">
-                        <span class="reply-author"><%= r.author %></span>
-                        <span class="time" data-time="<%= r.createdAt %>"><%= formatTime(r.createdAt) %></span>
-                        <p><%= r.text %></p>
-                    </div>
-                <% }) %>
-                </div>
-            </div>
-        </div>
-    <% }) %>
-    </div>
-
-</div>
-<% }) %>
-
-</div>
-
-<!-- CHAT -->
-<div class="chat-box">
-    <div class="chat-toggle" onclick="toggleChat()">💬</div>
-    <div class="chat-content" id="chatContent">
-        <div id="messages"></div>
-        <input id="msgInput" placeholder="Chat..." onkeypress="if(event.key==='Enter')sendChat()">
+        <button class="post-btn" onclick="createPost()">Post</button>
     </div>
 </div>
 
+<!-- POSTS CONTAINER -->
+<div id="postsContainer"></div>
+
+</div>
+
+<!-- LIVESTREAM CHAT -->
+<div class="livestream-chat" id="chatPanel">
+    <div class="chat-header" onclick="toggleChat()">
+        <span>💬 Live Chat</span>
+        <span id="chatToggle">▼</span>
+    </div>
+    <div class="chat-messages" id="chatMessages"></div>
+    <div class="chat-input-container">
+        <input type="text" id="chatInput" placeholder="Say something..." onkeypress="if(event.key==='Enter')sendChat()">
+        <button onclick="sendChat()">Send</button>
+    </div>
+</div>
+
+<!-- NOTIFICATIONS -->
 <div id="notifications"></div>
 
 <script src="/socket.io/socket.io.js"></script>
-
 <script>
 const socket = io();
 const currentUser = "<%= user.username %>";
+const userPfp = "<%= user.pfp || '/default.png' %>";
+let currentSubs = <%- JSON.stringify(user.subs || []) %>;
 let sortNewest = true;
+let chatOpen = true;
+let postMedia = { image: null, video: null, gif: null };
 
-function formatTime(timestamp) {
-    const seconds = Math.floor((Date.now() - timestamp) / 1000);
-    if (seconds < 60) return seconds + 's';
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return minutes + 'm';
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return hours + 'h';
-    const days = Math.floor(hours / 24);
-    if (days < 30) return days + 'd';
-    return Math.floor(days / 30) + 'mo';
+// Format time
+function formatTime(ts) {
+    const s = Math.floor((Date.now() - ts) / 1000);
+    if (s < 60) return s + 's';
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + 'm';
+    const h = Math.floor(m / 60);
+    if (h < 24) return h + 'h';
+    return Math.floor(h / 24) + 'd';
 }
 
+// Update times every minute
 setInterval(() => {
-    document.querySelectorAll('.time[data-time]').forEach(el => {
+    document.querySelectorAll('.time').forEach(el => {
         el.textContent = formatTime(parseInt(el.dataset.time));
     });
 }, 60000);
 
-let postImage = null;
-let postVideo = null;
-let postGif = null;
-
-function toBase64(file, callback) {
+// Media handling
+function handleMedia(input, type) {
+    if (!input.files[0]) return;
     const reader = new FileReader();
-    reader.onload = () => callback(reader.result);
-    reader.readAsDataURL(file);
+    reader.onload = e => {
+        postMedia[type] = e.target.result;
+        updateMediaPreview();
+    };
+    reader.readAsDataURL(input.files[0]);
 }
 
-function handleImage(input) {
-    if (input.files[0]) {
-        toBase64(input.files[0], (base64) => {
-            postImage = base64;
-            showMediaPreview();
-        });
-    }
-}
-
-function handleVideo(input) {
-    if (input.files[0]) {
-        toBase64(input.files[0], (base64) => {
-            postVideo = base64;
-            showMediaPreview();
-        });
-    }
-}
-
-function handleGif(input) {
-    if (input.files[0]) {
-        toBase64(input.files[0], (base64) => {
-            postGif = base64;
-            showMediaPreview();
-        });
-    }
-}
-
-function showMediaPreview() {
+function updateMediaPreview() {
     let html = '';
-    if (postImage) html += '<img src="' + postImage + '" class="preview-thumb">';
-    if (postVideo) html += '<video src="' + postVideo + '" class="preview-thumb">';
-    if (postGif) html += '<img src="' + postGif + '" class="preview-thumb">';
+    ['image', 'video', 'gif'].forEach(type => {
+        if (postMedia[type]) {
+            if (type === 'video') {
+                html += `<video src="${postMedia[type]}" class="preview-item" muted>`;
+            } else {
+                html += `<img src="${postMedia[type]}" class="preview-item">`;
+            }
+        }
+    });
     document.getElementById('mediaPreview').innerHTML = html;
 }
 
+// Create post - NO PAGE RELOAD
 function createPost() {
-    const content = document.querySelector('#createPostForm textarea').value;
-    if (!content.trim() && !postImage && !postVideo && !postGif) return;
-    
-    const formData = new URLSearchParams();
-    formData.append('content', content);
-    if (postImage) formData.append('image', postImage);
-    if (postVideo) formData.append('video', postVideo);
-    if (postGif) formData.append('gif', postGif);
+    const content = document.getElementById('postContent').value;
+    if (!content.trim() && !postMedia.image && !postMedia.video && !postMedia.gif) return;
     
     fetch('/create-post', {
         method: 'POST',
-        body: formData
-    }).then(() => {
-        postImage = postVideo = postGif = null;
-        location.reload();
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            content: content,
+            image: postMedia.image,
+            video: postMedia.video,
+            gif: postMedia.gif
+        })
     });
+    
+    postMedia = { image: null, video: null, gif: null };
+    document.getElementById('postContent').value = '';
+    document.getElementById('mediaPreview').innerHTML = '';
 }
 
-function like(postId) {
+// Render posts
+function renderPosts(posts) {
+    const container = document.getElementById('postsContainer');
+    container.innerHTML = posts.map(p => {
+        const isSubscribed = currentSubs.includes(p.author);
+        return `
+        <div class="post-card" id="post-${p.id}">
+            ${p.banner ? `<div class="post-banner"><img src="${p.banner}"></div>` : ''}
+            <div class="post-header">
+                <img src="${p.pfp || '/default.png'}" class="post-pfp">
+                <div class="post-info">
+                    <span class="post-author">${escapeHtml(p.author)}</span>
+                    <span class="time" data-time="${p.createdAt}">${formatTime(p.createdAt)}</span>
+                </div>
+                ${p.author === currentUser ? `<button class="del-btn" onclick="deletePost('${p.id}')">🗑️</button>` : ''}
+                ${p.author !== currentUser ? `<button class="sub-btn" id="sub-btn-${p.author}" onclick="toggleSubscribe('${p.author}')">${isSubscribed ? 'Unsubscribed' : 'Subscribe'}</button>` : ''}
+            </div>
+            ${p.content ? `<p class="post-text">${escapeHtml(p.content)}</p>` : ''}
+            ${p.image ? `<img src="${p.image}" class="post-media" onclick="openMedia('${p.image}')">` : ''}
+            ${p.gif ? `<img src="${p.gif}" class="post-media post-gif">` : ''}
+            ${p.video ? `<video src="${p.video}" controls class="post-media"></video>` : ''}
+            <div class="post-actions">
+                <button class="action-btn like-btn ${p.likes?.includes(currentUser) ? 'liked' : ''}" onclick="likePost('${p.id}')">
+                    👍 <span>${p.likes?.length || 0}</span>
+                </button>
+                <button class="action-btn dislike-btn ${p.dislikes?.includes(currentUser) ? 'disliked' : ''}" onclick="dislikePost('${p.id}')">
+                    👎 <span>${p.dislikes?.length || 0}</span>
+                </button>
+            </div>
+            <div class="comment-section">
+                <div class="comment-input-box">
+                    <input type="text" id="comment-input-${p.id}" placeholder="Add a comment..." onkeypress="if(event.key==='Enter')addComment('${p.id}')">
+                    <button onclick="addComment('${p.id}')">Comment</button>
+                </div>
+                <div class="comments-list">
+                    ${(p.comments || []).map(c => `
+                        <div class="comment-item">
+                            <img src="${c.pfp || '/default.png'}" class="comment-pfp">
+                            <div class="comment-body">
+                                <div class="comment-top">
+                                    <span class="comment-author">${escapeHtml(c.author)}</span>
+                                    <span class="time" data-time="${c.createdAt}">${formatTime(c.createdAt)}</span>
+                                </div>
+                                <p class="comment-text">${escapeHtml(c.text)}</p>
+                                <div class="comment-actions">
+                                    <button class="c-action-btn ${c.likes?.includes(currentUser) ? 'liked' : ''}" onclick="likeComment('${p.id}','${c.id}')">👍 ${c.likes?.length || 0}</button>
+                                    <button class="c-action-btn ${c.dislikes?.includes(currentUser) ? 'disliked' : ''}" onclick="dislikeComment('${p.id}','${c.id}')">👎 ${c.dislikes?.length || 0}</button>
+                                    <button class="c-action-btn" onclick="toggleReplyInput('reply-input-${p.id}-${c.id}')">Reply</button>
+                                    ${c.author === currentUser ? `<button class="c-del-btn" onclick="deleteComment('${p.id}','${c.id}')">Delete</button>` : ''}
+                                </div>
+                                <div class="reply-input-box" id="reply-input-${p.id}-${c.id}" style="display:none;">
+                                    <input type="text" id="reply-text-${p.id}-${c.id}" placeholder="Write a reply..." onkeypress="if(event.key==='Enter')addReply('${p.id}','${c.id}')">
+                                    <button onclick="addReply('${p.id}','${c.id}')">Send</button>
+                                </div>
+                                <div class="replies-list">
+                                    ${(c.replies || []).map(r => `
+                                        <div class="reply-item">
+                                            <img src="${r.pfp || '/default.png'}" class="reply-pfp">
+                                            <div class="reply-body">
+                                                <span class="reply-author">${escapeHtml(r.author)}</span>
+                                                <span class="time" data-time="${r.createdAt}">${formatTime(r.createdAt)}</span>
+                                                <p class="reply-text">${escapeHtml(r.text)}</p>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        </div>
+    `}).join('');
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Toggle Subscribe/Unsubscribe
+function toggleSubscribe(username) {
+    fetch('/subscribe/' + username, { method: 'POST' });
+    
+    if (currentSubs.includes(username)) {
+        currentSubs = currentSubs.filter(s => s !== username);
+        socket.emit('unsubscribe', { user: username, subscriber: currentUser });
+    } else {
+        currentSubs.push(username);
+        socket.emit('subscribe', { user: username, subscriber: currentUser });
+    }
+    
+    const btn = document.getElementById('sub-btn-' + username);
+    if (btn) {
+        btn.textContent = currentSubs.includes(username) ? 'Subscribed' : 'Subscribe';
+    }
+}
+
+// Like/Dislike posts
+function likePost(postId) {
     fetch('/like/' + postId, { method: 'POST' });
-    const count = document.getElementById('like-count-' + postId);
-    count.textContent = parseInt(count.textContent) + 1;
-    socket.emit('like', { postId, user: currentUser });
 }
 
-function dislike(postId) {
+function dislikePost(postId) {
     fetch('/dislike/' + postId, { method: 'POST' });
-    const count = document.getElementById('dislike-count-' + postId);
-    count.textContent = parseInt(count.textContent) + 1;
 }
 
-function comment(postId) {
+// Comments
+function addComment(postId) {
     const input = document.getElementById('comment-input-' + postId);
     const text = input.value;
     if (!text.trim()) return;
     
     fetch('/comment/' + postId, {
         method: 'POST',
-        body: 'text=' + encodeURIComponent(text)
-    }).then(() => location.reload());
-}
-
-function reply(postId, commentId) {
-    const input = document.getElementById('reply-input-' + postId + '-' + commentId);
-    const text = input.value;
-    if (!text.trim()) return;
-    
-    fetch('/reply/' + postId + '/' + commentId, {
-        method: 'POST',
-        body: 'text=' + encodeURIComponent(text)
-    }).then(() => location.reload());
-}
-
-function deletePost(postId) {
-    if (confirm('Delete this post?')) {
-        fetch('/delete-post/' + postId, { method: 'POST' }).then(() => location.reload());
-    }
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ text: text })
+    });
+    input.value = '';
 }
 
 function likeComment(postId, commentId) {
@@ -295,86 +266,106 @@ function dislikeComment(postId, commentId) {
     fetch('/dislike-comment/' + postId + '/' + commentId, { method: 'POST' });
 }
 
-function subscribe(username) {
-    fetch('/subscribe/' + username, { method: 'POST' }).then(() => {
-        const count = parseInt(document.getElementById('subCount').textContent);
-        document.getElementById('subCount').textContent = count + 1;
-    });
-    socket.emit('subscribe', { user: username, subscriber: currentUser });
-}
-
-function sendChat() {
-    const input = document.getElementById('msgInput');
-    if (input.value.trim()) {
-        socket.emit("chat message", { user: currentUser, text: input.value });
-        input.value = "";
+function deleteComment(postId, commentId) {
+    if (confirm('Delete this comment?')) {
+        fetch('/delete-comment/' + postId + '/' + commentId, { method: 'POST' });
     }
 }
 
-socket.on("chat message", (msg) => {
-    const div = document.createElement("div");
-    div.textContent = msg.user + ": " + msg.text;
-    document.getElementById("messages").appendChild(div);
-});
-
-socket.on("newPost", (post) => {
-    showNotification(post.author + " posted something!");
-});
-
-socket.on("newSubscriber", (data) => {
-    showNotification(data.subscriber + " subscribed to you!");
-    const count = parseInt(document.getElementById('subCount').textContent);
-    document.getElementById('subCount').textContent = count + 1;
-});
-
-// Realtime: new post
-socket.on("newPost", (post) => {
-    showNotification(post.author + " posted something!");
-    location.reload();
-});
-
-// Realtime: post deleted
-socket.on("postDeleted", (postId) => {
-    const post = document.getElementById('post-' + postId);
-    if (post) post.remove();
-});
-
-// Realtime: new comment
-socket.on("newComment", (data) => {
-    showNotification(data.author + " commented on your post");
-});
-
-// Realtime: like update
-socket.on("likeUpdate", (data) => {
-    const countEl = document.getElementById('like-count-' + data.postId);
-    if (countEl) countEl.textContent = data.count;
-});
-
-// Realtime: dislike update
-socket.on("dislikeUpdate", (data) => {
-    const countEl = document.getElementById('dislike-count-' + data.postId);
-    if (countEl) countEl.textContent = data.count;
-});
-
-function showNotification(message) {
-    const div = document.createElement("div");
-    div.className = "notification";
-    div.textContent = message;
-    document.getElementById("notifications").appendChild(div);
-    setTimeout(() => div.remove(), 5000);
+function toggleReplyInput(id) {
+    const el = document.getElementById(id);
+    el.style.display = el.style.display === 'none' ? 'flex' : 'none';
 }
 
+function addReply(postId, commentId) {
+    const input = document.getElementById('reply-text-' + postId + '-' + commentId);
+    const text = input.value;
+    if (!text.trim()) return;
+    
+    fetch('/reply/' + postId + '/' + commentId, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ text: text })
+    });
+    input.value = '';
+}
+
+function deletePost(postId) {
+    if (confirm('Delete this post?')) {
+        fetch('/delete-post/' + postId, { method: 'POST' });
+    }
+}
+
+// Chat
+function sendChat() {
+    const input = document.getElementById('chatInput');
+    if (!input.value.trim()) return;
+    socket.emit('chat message', { user: currentUser, text: input.value, pfp: userPfp });
+    input.value = '';
+}
+
+function toggleChat() {
+    chatOpen = !chatOpen;
+    const messages = document.getElementById('chatMessages');
+    const toggle = document.getElementById('chatToggle');
+    
+    if (chatOpen) {
+        messages.style.display = 'block';
+        toggle.textContent = '▼';
+    } else {
+        messages.style.display = 'none';
+        toggle.textContent = '▲';
+    }
+}
+
+// Socket events
+socket.on('chatHistory', messages => {
+    const container = document.getElementById('chatMessages');
+    container.innerHTML = messages.map(msg => `
+        <div class="chat-msg">
+            <img src="${msg.pfp || '/default.png'}" class="chat-pfp">
+            <span class="chat-user">${escapeHtml(msg.user)}:</span> ${escapeHtml(msg.text)}
+        </div>
+    `).join('');
+    container.scrollTop = container.scrollHeight;
+});
+
+socket.on('chat message', msg => {
+    const container = document.getElementById('chatMessages');
+    const div = document.createElement('div');
+    div.className = 'chat-msg';
+    div.innerHTML = `<img src="${msg.pfp || '/default.png'}" class="chat-pfp"><span class="chat-user">${escapeHtml(msg.user)}:</span> ${escapeHtml(msg.text)}`;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+});
+
+socket.on('postUpdate', posts => {
+    renderPosts(posts);
+});
+
+socket.on('subUpdate', data => {
+    if (data.username === currentUser) {
+        document.getElementById('mySubCount').textContent = data.count;
+    }
+});
+
+socket.on('notification', msg => {
+    const div = document.createElement('div');
+    div.className = 'toast-notification';
+    div.textContent = msg;
+    document.body.appendChild(div);
+    setTimeout(() => div.remove(), 3000);
+});
+
+// Sort
 function toggleSort() {
     sortNewest = !sortNewest;
     document.getElementById('sortLabel').textContent = sortNewest ? 'Newest' : 'Popular';
-    socket.emit('requestPosts', { sort: sortNewest ? 'newest' : 'popular' });
+    socket.emit('getPosts', { sort: sortNewest ? 'newest' : 'popular' });
 }
 
-let chatOpen = true;
-function toggleChat() {
-    chatOpen = !chatOpen;
-    document.getElementById("chatContent").style.display = chatOpen ? "block" : "none";
-}
+// Load posts on start
+socket.emit('getPosts', { sort: 'newest' });
 </script>
 
 </body>

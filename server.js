@@ -60,20 +60,29 @@ async function saveBase64Image(base64Data, prefix, options = {}) {
 }
 
 async function saveBase64Media(base64Data, prefix) {
-    if (!base64Data || !base64Data.startsWith('data:image') && !base64Data.startsWith('data:video')) return null;
+    if (!base64Data || !base64Data.startsWith('data:')) return null;
     
     const isVideo = base64Data.startsWith('data:video');
-    const ext = isVideo ? 'mp4' : getImageExtension(base64Data);
+    const isGif = base64Data.includes('image/gif');
+    
+    let contentType;
+    if (isVideo) {
+        contentType = base64Data.match(/^data:video\/(\w+);base64,/);
+        contentType = contentType ? contentType[1] : 'mp4';
+    } else if (isGif) {
+        contentType = 'gif';
+    } else {
+        contentType = base64Data.match(/^data:image\/(\w+);base64,/);
+        contentType = contentType ? contentType[1] : 'png';
+    }
+    
+    const ext = contentType;
     const filename = `${prefix}_${Date.now()}.${ext}`;
     const filepath = './public/uploads/' + filename;
     
-    let base64;
-    if (isVideo) {
-        base64 = base64Data.replace(/^data:video\/\w+;base64,/, '');
-    } else {
-        base64 = base64Data.replace(/^data:image\/\w+;base64,/, '');
-    }
+    const base64 = base64Data.replace(/^data:[^;]+;base64,/, '');
     const buffer = Buffer.from(base64, 'base64');
+    
     fs.writeFileSync(filepath, buffer);
     
     return '/uploads/' + filename;
@@ -133,9 +142,15 @@ app.get('/', (req, res) => {
     const db = loadDB();
 
     const currentUser = db.users.find(u => u.username === req.session.user.username);
+    
+    const subscriberCount = db.users.filter(u => 
+        u.subs && u.subs.includes(req.session.user.username)
+    ).length;
+    
     const userData = currentUser ? {
         ...req.session.user,
         subs: currentUser.subs || [],
+        subsCount: subscriberCount,
         banner: currentUser.banner
     } : req.session.user;
 
@@ -167,15 +182,24 @@ app.get('/', (req, res) => {
 app.post('/create-post', async (req, res) => {
     const db = loadDB();
 
-    const { content, image, video, gif } = req.body;
+    let content = req.body.content || req.body.text || '';
+    let image = req.body.image || null;
+    let video = req.body.video || null;
+    let gif = req.body.gif || null;
 
     let imagePath = null;
     let videoPath = null;
     let gifPath = null;
 
-    if (image) imagePath = await saveBase64Media(image, 'image');
-    if (video) videoPath = await saveBase64Media(video, 'video');
-    if (gif) gifPath = await saveBase64Media(gif, 'gif');
+    if (image && typeof image === 'string' && image.startsWith('data:')) {
+        try { imagePath = await saveBase64Media(image, 'image'); } catch(e) { console.error('Image error:', e); }
+    }
+    if (video && typeof video === 'string' && video.startsWith('data:')) {
+        try { videoPath = await saveBase64Media(video, 'video'); } catch(e) { console.error('Video error:', e); }
+    }
+    if (gif && typeof gif === 'string' && gif.startsWith('data:')) {
+        try { gifPath = await saveBase64Media(gif, 'gif'); } catch(e) { console.error('Gif error:', e); }
+    }
 
     const post = {
         id: Date.now().toString(),
@@ -193,11 +217,10 @@ app.post('/create-post', async (req, res) => {
     };
 
     db.posts.unshift(post);
-    
-    io.emit('newPost', post);
     saveDB(db);
+    io.emit('postUpdate', db.posts);
 
-    res.redirect('/');
+    res.json({ success: true });
 });
 
 // LIKE
@@ -205,14 +228,16 @@ app.post('/like/:id', (req, res) => {
     const db = loadDB();
     const post = db.posts.find(p => p.id === req.params.id);
 
+    if (!post) return res.json({ error: 'Post not found' });
+
     if (!post.likes.includes(req.session.user.username)) {
         post.likes.push(req.session.user.username);
         post.dislikes = post.dislikes.filter(u => u !== req.session.user.username);
-        io.emit('likeUpdate', { postId: req.params.id, count: post.likes.length });
     }
 
     saveDB(db);
-    res.redirect('/');
+    io.emit('postUpdate', db.posts);
+    res.json({ success: true });
 });
 
 // DISLIKE
@@ -220,23 +245,25 @@ app.post('/dislike/:id', (req, res) => {
     const db = loadDB();
     const post = db.posts.find(p => p.id === req.params.id);
 
+    if (!post) return res.json({ error: 'Post not found' });
+
     if (!post.dislikes.includes(req.session.user.username)) {
         post.dislikes.push(req.session.user.username);
         post.likes = post.likes.filter(u => u !== req.session.user.username);
-        io.emit('dislikeUpdate', { postId: req.params.id, count: post.dislikes.length });
     }
 
     saveDB(db);
-    res.redirect('/');
+    io.emit('postUpdate', db.posts);
+    res.json({ success: true });
 });
 
 // COMMENT LIKE
 app.post('/like-comment/:postId/:commentId', (req, res) => {
     const db = loadDB();
     const post = db.posts.find(p => p.id === req.params.postId);
-    const comment = post.comments.find(c => c.id === req.params.commentId);
+    const comment = post?.comments.find(c => c.id === req.params.commentId);
     
-    if (!comment) return res.send("Comment not found");
+    if (!comment) return res.json({ error: 'Comment not found' });
     
     if (!comment.likes) comment.likes = [];
     if (!comment.dislikes) comment.dislikes = [];
@@ -250,16 +277,17 @@ app.post('/like-comment/:postId/:commentId', (req, res) => {
     }
 
     saveDB(db);
-    res.redirect('/');
+    io.emit('postUpdate', db.posts);
+    res.json({ success: true });
 });
 
 // COMMENT DISLIKE
 app.post('/dislike-comment/:postId/:commentId', (req, res) => {
     const db = loadDB();
     const post = db.posts.find(p => p.id === req.params.postId);
-    const comment = post.comments.find(c => c.id === req.params.commentId);
+    const comment = post?.comments.find(c => c.id === req.params.commentId);
     
-    if (!comment) return res.send("Comment not found");
+    if (!comment) return res.json({ error: 'Comment not found' });
     
     if (!comment.likes) comment.likes = [];
     if (!comment.dislikes) comment.dislikes = [];
@@ -273,7 +301,8 @@ app.post('/dislike-comment/:postId/:commentId', (req, res) => {
     }
 
     saveDB(db);
-    res.redirect('/');
+    io.emit('postUpdate', db.posts);
+    res.json({ success: true });
 });
 
 // COMMENT (FIXED)
@@ -283,11 +312,13 @@ app.post('/comment/:postId', (req, res) => {
 
     if (!post) return res.send("Post not found");
 
+    const text = req.body.text || req.body.content || '';
+    
     post.comments.push({
         id: Date.now().toString(),
         author: req.session.user.username,
         pfp: req.session.user.pfp,
-        text: req.body.text,
+        text: text,
         createdAt: Date.now(),
         likes: [],
         dislikes: [],
@@ -295,75 +326,100 @@ app.post('/comment/:postId', (req, res) => {
     });
 
     saveDB(db);
-    res.redirect('/');
+    io.emit('postUpdate', db.posts);
+    res.json({ success: true });
 });
 
 // REPLY
 app.post('/reply/:postId/:commentId', (req, res) => {
     const db = loadDB();
     const post = db.posts.find(p => p.id === req.params.postId);
+    const comment = post?.comments.find(c => c.id === req.params.commentId);
+    
+    if (!comment) return res.json({ error: 'Comment not found' });
+    
+    const text = req.body.text || req.body.content || '';
 
-    const comment = post.comments.find(c => c.id === req.params.commentId);
-
+    comment.replies = comment.replies || [];
     comment.replies.push({
         author: req.session.user.username,
-        text: req.body.text,
+        pfp: req.session.user.pfp,
+        text: text,
         createdAt: Date.now()
     });
 
     saveDB(db);
-    res.redirect('/');
+    io.emit('postUpdate', db.posts);
+    res.json({ success: true });
 });
 
-// SUBSCRIBE
+// SUBSCRIBE/UNSUBSCRIBE
 app.post('/subscribe/:username', (req, res) => {
     const db = loadDB();
-
     const me = db.users.find(u => u.username === req.session.user.username);
-
-    if (!me.subs.includes(req.params.username)) {
+    
+    if (!me.subs) me.subs = [];
+    
+    if (me.subs.includes(req.params.username)) {
+        me.subs = me.subs.filter(s => s !== req.params.username);
+    } else {
         me.subs.push(req.params.username);
     }
 
     saveDB(db);
-    res.redirect('/');
+    res.json({ success: true, subs: me.subs });
 });
 
-// CHAT
+// CHAT - Store messages in memory
+let chatMessages = [];
+const MAX_CHAT_MESSAGES = 100;
+
 io.on('connection', (socket) => {
+    // Send existing chat history
+    socket.emit('chatHistory', chatMessages);
+    
     socket.on('chat message', (msg) => {
+        chatMessages.push(msg);
+        if (chatMessages.length > MAX_CHAT_MESSAGES) {
+            chatMessages.shift();
+        }
         io.emit('chat message', msg);
-    });
-    
-    socket.on('like', (data) => {
-        socket.broadcast.emit('like', data);
-    });
-    
-    socket.on('dislike', (data) => {
-        socket.broadcast.emit('dislike', data);
-    });
-    
-    socket.on('comment', (data) => {
-        io.emit('newComment', data);
     });
     
     socket.on('subscribe', (data) => {
         const db = loadDB();
         const user = db.users.find(u => u.username === data.user);
         if (user) {
-            socket.broadcast.emit('newSubscriber', { user: data.user, subscriber: data.subscriber });
+            socket.broadcast.emit('notification', data.subscriber + ' subscribed to you!');
+            const subCount = db.users.filter(u => 
+                u.subs && u.subs.includes(data.user)
+            ).length;
+            io.emit('subUpdate', { username: data.user, count: subCount });
         }
     });
     
-    socket.on('requestPosts', (data) => {
+    socket.on('unsubscribe', (data) => {
         const db = loadDB();
-        let posts = db.posts;
-        if (data.sort === 'popular') {
-            posts = posts.sort((a, b) => b.likes.length - a.likes.length);
-        } else {
-            posts = posts.sort((a, b) => b.createdAt - a.createdAt);
+        const user = db.users.find(u => u.username === data.user);
+        if (user && user.subs) {
+            user.subs = user.subs.filter(s => s !== data.subscriber);
+            saveDB(db);
+            const subCount = db.users.filter(u => 
+                u.subs && u.subs.includes(data.user)
+            ).length;
+            io.emit('subUpdate', { username: data.user, count: subCount });
         }
-        socket.emit('postsUpdate', posts);
+    });
+    
+    socket.on('getPosts', (data) => {
+        const db = loadDB();
+        let posts = [...db.posts];
+        if (data.sort === 'popular') {
+            posts.sort((a, b) => (b.likes?.length || 0) - (a.likes?.length || 0));
+        } else {
+            posts.sort((a, b) => b.createdAt - a.createdAt);
+        }
+        socket.emit('postUpdate', posts);
     });
 });
 
@@ -383,10 +439,31 @@ app.post('/delete-post/:id', (req, res) => {
         if (post.author === req.session.user.username) {
             db.posts.splice(postIndex, 1);
             saveDB(db);
+            io.emit('postUpdate', db.posts);
         }
     }
     
-    res.redirect('/');
+    res.json({ success: true });
+});
+
+// DELETE COMMENT
+app.post('/delete-comment/:postId/:commentId', (req, res) => {
+    const db = loadDB();
+    const post = db.posts.find(p => p.id === req.params.postId);
+    
+    if (post) {
+        const commentIndex = post.comments.findIndex(c => c.id === req.params.commentId);
+        if (commentIndex !== -1) {
+            const comment = post.comments[commentIndex];
+            if (comment.author === req.session.user.username) {
+                post.comments.splice(commentIndex, 1);
+                saveDB(db);
+                io.emit('postUpdate', db.posts);
+            }
+        }
+    }
+    
+    res.json({ success: true });
 });
 
 server.listen(PORT, () => console.log("Running on " + PORT));
