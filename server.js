@@ -225,6 +225,7 @@ app.post('/create-post', async (req, res) => {
 
 // LIKE
 app.post('/like/:id', (req, res) => {
+    console.log('Like request for:', req.params.id, 'session:', req.session.user?.username);
     const db = loadDB();
     const post = db.posts.find(p => p.id === req.params.id);
 
@@ -320,8 +321,11 @@ app.post('/comment/:postId', (req, res) => {
         pfp: req.session.user.pfp,
         text: text,
         createdAt: Date.now(),
+        editedAt: null,
         likes: [],
         dislikes: [],
+        isPinned: false,
+        reports: [],
         replies: []
     });
 
@@ -342,11 +346,125 @@ app.post('/reply/:postId/:commentId', (req, res) => {
 
     comment.replies = comment.replies || [];
     comment.replies.push({
+        id: Date.now().toString(),
         author: req.session.user.username,
         pfp: req.session.user.pfp,
         text: text,
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        editedAt: null,
+        likes: [],
+        dislikes: [],
+        isPinned: false,
+        reports: []
     });
+
+    saveDB(db);
+    io.emit('postUpdate', db.posts);
+    res.json({ success: true });
+});
+
+// PIN REPLY
+app.post('/pin-reply/:postId/:commentId/:replyId', (req, res) => {
+    const db = loadDB();
+    const post = db.posts.find(p => p.id === req.params.postId);
+    const comment = post?.comments.find(c => c.id === req.params.commentId);
+    const reply = comment?.replies?.find(r => r.id === req.params.replyId);
+    
+    if (!reply) return res.json({ error: 'Reply not found' });
+    if (post.author !== req.session.user.username) return res.json({ error: 'Only post author can pin' });
+    
+    reply.isPinned = !reply.isPinned;
+    
+    saveDB(db);
+    io.emit('postUpdate', db.posts);
+    res.json({ success: true, isPinned: reply.isPinned });
+});
+
+// EDIT REPLY
+app.post('/edit-reply/:postId/:commentId/:replyId', (req, res) => {
+    const db = loadDB();
+    const post = db.posts.find(p => p.id === req.params.postId);
+    const comment = post?.comments.find(c => c.id === req.params.commentId);
+    const reply = comment?.replies?.find(r => r.id === req.params.replyId);
+    
+    if (!reply) return res.json({ error: 'Reply not found' });
+    if (reply.author !== req.session.user.username) return res.json({ error: 'Only author can edit' });
+    
+    const newText = req.body.text || req.body.content || '';
+    if (!newText.trim()) return res.json({ error: 'Reply cannot be empty' });
+    
+    reply.text = newText;
+    reply.editedAt = Date.now();
+    
+    saveDB(db);
+    io.emit('postUpdate', db.posts);
+    res.json({ success: true, text: reply.text, editedAt: reply.editedAt });
+});
+
+// REPORT REPLY
+app.post('/report-reply/:postId/:commentId/:replyId', (req, res) => {
+    const db = loadDB();
+    const post = db.posts.find(p => p.id === req.params.postId);
+    const comment = post?.comments.find(c => c.id === req.params.commentId);
+    const reply = comment?.replies?.find(r => r.id === req.params.replyId);
+    
+    if (!reply) return res.json({ error: 'Reply not found' });
+    
+    if (!reply.reports) reply.reports = [];
+    const username = req.session.user.username;
+    
+    if (!reply.reports.includes(username)) {
+        reply.reports.push(username);
+    }
+    
+    saveDB(db);
+    res.json({ success: true, reportCount: reply.reports.length });
+});
+
+// LIKE REPLY
+app.post('/like-reply/:postId/:commentId/:replyId', (req, res) => {
+    const db = loadDB();
+    const post = db.posts.find(p => p.id === req.params.postId);
+    const comment = post?.comments.find(c => c.id === req.params.commentId);
+    const reply = comment?.replies?.find(r => r.id === req.params.replyId);
+    
+    if (!reply) return res.json({ error: 'Reply not found' });
+    
+    if (!reply.likes) reply.likes = [];
+    if (!reply.dislikes) reply.dislikes = [];
+    
+    const username = req.session.user.username;
+    if (!reply.likes.includes(username) && !reply.dislikes.includes(username)) {
+        reply.likes.push(username);
+    } else if (reply.dislikes.includes(username)) {
+        reply.dislikes = reply.dislikes.filter(u => u !== username);
+        reply.likes.push(username);
+    }
+
+    saveDB(db);
+    io.emit('postUpdate', db.posts);
+    res.json({ success: true });
+});
+
+// DISLIKE REPLY
+app.post('/dislike-reply/:postId/:commentId/:replyId', (req, res) => {
+    const db = loadDB();
+    const post = db.posts.find(p => p.id === req.params.postId);
+    const comment = post?.comments.find(c => c.id === req.params.commentId);
+    const reply = comment?.replies?.find(r => r.id === req.params.replyId);
+    
+    if (!reply) return res.json({ error: 'Reply not found' });
+    
+    if (!reply.likes) reply.likes = [];
+    if (!reply.dislikes) reply.dislikes = [];
+    
+    const username = req.session.user.username;
+    if (!reply.dislikes.includes(username) && !reply.likes.includes(username)) {
+        reply.dislikes.push(username);
+    } else if (reply.likes.includes(username)) {
+        reply.likes = reply.likes.filter(u => u !== username);
+        reply.dislikes.push(username);
+    }
 
     saveDB(db);
     io.emit('postUpdate', db.posts);
@@ -423,8 +541,30 @@ io.on('connection', (socket) => {
     });
 });
 
-// LOGOUT
+// LOGOUT - Delete user pfp, banner, and posts
 app.get('/logout', (req, res) => {
+    const username = req.session.user?.username;
+    if (username) {
+        const db = loadDB();
+        const user = db.users.find(u => u.username === username);
+        
+        if (user) {
+            if (user.pfp && user.pfp.includes('/uploads/')) {
+                try { fs.unlinkSync('./public' + user.pfp.replace('/uploads/', '/uploads/')); } catch(e) {}
+            }
+            if (user.banner && user.banner.includes('/uploads/')) {
+                try { fs.unlinkSync('./public' + user.banner.replace('/uploads/', '/uploads/')); } catch(e) {}
+            }
+            
+            db.posts = db.posts.filter(p => p.author !== username);
+            
+            user.pfp = null;
+            user.banner = null;
+            
+            saveDB(db);
+            io.emit('postUpdate', db.posts);
+        }
+    }
     req.session.destroy();
     res.redirect('/login');
 });
@@ -464,6 +604,140 @@ app.post('/delete-comment/:postId/:commentId', (req, res) => {
     }
     
     res.json({ success: true });
+});
+
+// CUSTOM EMOJIS
+app.get('/get-emojis', (req, res) => {
+    const db = loadDB();
+    if (!db.emojis) db.emojis = [];
+    res.json({ emojis: db.emojis });
+});
+
+app.post('/upload-emoji', async (req, res) => {
+    const { name, data } = req.body;
+    if (!data || !data.startsWith('data:')) return res.json({ error: 'Invalid image' });
+    
+    const ext = data.match(/^data:image\/(\w+);base64,/)?.[1] || 'png';
+    const filename = `emoji_${Date.now()}.${ext}`;
+    const filepath = './public/emojis/' + filename;
+    
+    if (!fs.existsSync('./public/emojis')) {
+        fs.mkdirSync('./public/emojis', { recursive: true });
+    }
+    
+    const base64 = data.replace(/^data:image\/\w+;base64,/, '');
+    fs.writeFileSync(filepath, Buffer.from(base64, 'base64'));
+    
+    const db = loadDB();
+    if (!db.emojis) db.emojis = [];
+    
+    db.emojis.push({
+        id: Date.now().toString(),
+        name: name,
+        url: '/emojis/' + filename,
+        uploadedBy: req.session.user?.username || 'anonymous'
+    });
+    
+    saveDB(db);
+    res.json({ success: true, emoji: db.emojis[db.emojis.length - 1] });
+});
+
+// REACTIONS
+app.post('/react/:postId', (req, res) => {
+    const db = loadDB();
+    const post = db.posts.find(p => p.id === req.params.postId);
+    if (!post) return res.json({ error: 'Post not found' });
+    
+    const { emoji } = req.body;
+    if (!post.reactions) post.reactions = {};
+    if (!post.reactions[emoji]) post.reactions[emoji] = [];
+    
+    const user = req.session.user.username;
+    if (!post.reactions[emoji].includes(user)) {
+        post.reactions[emoji].push(user);
+    }
+    
+    saveDB(db);
+    io.emit('postUpdate', db.posts);
+    res.json({ success: true });
+});
+
+// PIN POST
+app.post('/pin/:postId', (req, res) => {
+    const db = loadDB();
+    const post = db.posts.find(p => p.id === req.params.postId);
+    if (!post || post.author !== req.session.user.username) return res.json({ error: 'Unauthorized' });
+    
+    post.pinned = !post.pinned;
+    saveDB(db);
+    io.emit('postUpdate', db.posts);
+    res.json({ success: true });
+});
+
+// FOLLOW/UNFOLLOW USER
+app.post('/follow/:username', (req, res) => {
+    const db = loadDB();
+    const target = db.users.find(u => u.username === req.params.username);
+    const me = db.users.find(u => u.username === req.session.user.username);
+    
+    if (!target || !me) return res.json({ error: 'User not found' });
+    
+    if (!target.followers) target.followers = [];
+    if (!me.following) me.following = [];
+    
+    if (target.followers.includes(req.session.user.username)) {
+        target.followers = target.followers.filter(u => u !== req.session.user.username);
+        me.following = me.following.filter(u => u !== req.params.username);
+    } else {
+        target.followers.push(req.session.user.username);
+        me.following.push(req.params.username);
+    }
+    
+    saveDB(db);
+    io.emit('postUpdate', db.posts);
+    res.json({ success: true });
+});
+
+// GET USER PROFILE
+app.get('/get-user/:username', (req, res) => {
+    const db = loadDB();
+    const user = db.users.find(u => u.username === req.params.username);
+    if (!user) return res.json({ error: 'User not found' });
+    
+    const userPosts = db.posts.filter(p => p.author === req.params.username);
+    res.json({ user, posts: userPosts });
+});
+
+// STORIES
+app.post('/create-story', async (req, res) => {
+    const db = loadDB();
+    if (!db.stories) db.stories = [];
+    
+    let mediaUrl = null;
+    if (req.body.image) {
+        mediaUrl = await saveBase64Image(req.body.image, 'story');
+    }
+    
+    db.stories.push({
+        id: Date.now().toString(),
+        author: req.session.user.username,
+        pfp: req.session.user.pfp,
+        content: req.body.content,
+        image: mediaUrl,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 24 * 60 * 60 * 1000
+    });
+    
+    db.stories = db.stories.filter(s => s.expiresAt > Date.now());
+    saveDB(db);
+    io.emit('storiesUpdate', db.stories);
+    res.json({ success: true });
+});
+
+app.get('/get-stories', (req, res) => {
+    const db = loadDB();
+    if (!db.stories) db.stories = [];
+    res.json({ stories: db.stories.filter(s => s.expiresAt > Date.now()) });
 });
 
 server.listen(PORT, () => console.log("Running on " + PORT));

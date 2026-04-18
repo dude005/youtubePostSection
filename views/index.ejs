@@ -7,18 +7,26 @@
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
 </head>
 
-<body>
+<body class="dark-mode">
 
 <!-- NAVBAR -->
 <div class="navbar">
-    <h2 class="logo">MyTube</h2>
+    <h2 class="logo" onclick="location.href='/'">MyTube</h2>
     <div class="navbar-right">
+        <button class="theme-btn" onclick="toggleTheme()" title="Toggle Theme">🌙</button>
         <button class="sort-btn" onclick="toggleSort()">📅 <span id="sortLabel">Newest</span></button>
         <div class="sub-badge"><span id="mySubCount"><%= user.subsCount || 0 %></span> Subs</div>
-        <span class="username"><%= user.username %></span>
-        <img src="<%= user.pfp || '/default.png' %>" class="nav-pfp">
+        <div class="notif-btn" onclick="toggleNotifications()">🔔 <span id="notifCount">0</span></div>
+        <span class="username" onclick="location.href='/profile/<%= user.username %>'"><%= user.username %></span>
+        <img src="<%= user.pfp || '/default.png' %>" class="nav-pfp" onclick="location.href='/profile/<%= user.username %>'">
         <a href="/logout" class="logout-btn">Logout</a>
     </div>
+</div>
+
+<!-- NOTIFICATIONS PANEL -->
+<div class="notif-panel" id="notifPanel" style="display:none;">
+    <div class="notif-header">Notifications</div>
+    <div class="notif-list" id="notifList"></div>
 </div>
 
 <!-- FEED -->
@@ -27,18 +35,36 @@
 <!-- CREATE POST -->
 <div class="create-post-box">
     <div class="create-post-header">
-        <img src="<%= user.pfp || '/default.png' %>" class="create-pfp">
+        <img src="<%= user.pfp || '/default.png' %>" class="create-pfp" onclick="location.href='/profile/<%= user.username %>'">
         <textarea id="postContent" placeholder="What's on your mind?" rows="2"></textarea>
     </div>
     <div id="mediaPreview" class="media-preview"></div>
+    <div class="emoji-bar">
+        <label class="emoji-upload-btn" title="Add Custom Emoji">😊<input type="file" accept="image/*" onchange="uploadEmoji(this)" hidden></label>
+        <button class="emoji-toggle-btn" onclick="toggleEmojiPicker()">😀</button>
+        <div class="emoji-picker" id="emojiPicker" style="display:none;">
+            <input type="text" id="emojiSearch" placeholder="Search..." onkeyup="filterEmojis()">
+            <div class="emoji-grid" id="emojiGrid"></div>
+        </div>
+    </div>
     <div class="create-post-actions">
         <div class="media-btns">
-            <label class="media-btn">📷 Image<input type="file" accept="image/*" onchange="handleMedia(this, 'image')" hidden></label>
-            <label class="media-btn">🎬 Video<input type="file" accept="video/*" onchange="handleMedia(this, 'video')" hidden></label>
-            <label class="media-btn">🎞️ GIF<input type="file" accept="image/gif" onchange="handleMedia(this, 'gif')" hidden></label>
+            <label class="media-btn">📷 <input type="file" accept="image/*" onchange="handleMedia(this, 'image')" hidden></label>
+            <label class="media-btn">🎬 <input type="file" accept="video/*" onchange="handleMedia(this, 'video')" hidden></label>
+            <label class="media-btn">🎞️ <input type="file" accept="image/gif" onchange="handleMedia(this, 'gif')" hidden></label>
+            <label class="media-btn">🏷️ <input type="file" accept="image/*" onchange="handleBanner(this)" title="Set Banner" hidden></label>
         </div>
         <button class="post-btn" onclick="createPost()">Post</button>
     </div>
+</div>
+
+<!-- STORIES -->
+<div class="stories-bar" id="storiesBar">
+    <div class="story-add" onclick="createStory()" title="Add Story">
+        <img src="<%= user.pfp || '/default.png' %>" class="story-pfp">
+        <span class="add-story-icon">📷</span>
+    </div>
+    <div class="stories-scroll" id="storiesScroll"></div>
 </div>
 
 <!-- POSTS CONTAINER -->
@@ -49,7 +75,7 @@
 <!-- LIVESTREAM CHAT -->
 <div class="livestream-chat" id="chatPanel">
     <div class="chat-header" onclick="toggleChat()">
-        <span>💬 Live Chat</span>
+        <span>💬 Chat</span>
         <span id="chatToggle">▼</span>
     </div>
     <div class="chat-messages" id="chatMessages"></div>
@@ -57,6 +83,32 @@
         <input type="text" id="chatInput" placeholder="Say something..." onkeypress="if(event.key==='Enter')sendChat()">
         <button onclick="sendChat()">Send</button>
     </div>
+</div>
+
+<!-- PROFILE MODAL -->
+<div class="profile-modal" id="profileModal" style="display:none;">
+    <div class="profile-content">
+        <button class="close-modal" onclick="closeProfile()">✕</button>
+        <div class="profile-banner" id="modalBanner"></div>
+        <img src="" id="modalPfp" class="modal-pfp">
+        <h2 id="modalName"></h2>
+        <div class="profile-stats">
+            <span id="modalSubs">0 Subs</span>
+            <span id="modalFollowers">0 Followers</span>
+        </div>
+        <button class="follow-btn" id="modalFollowBtn" onclick="toggleFollow()">Follow</button>
+        <div class="profile-posts" id="modalPosts"></div>
+    </div>
+</div>
+
+<!-- REACTIONS POPUP -->
+<div class="reactions-popup" id="reactionsPopup" style="display:none;">
+    <button onclick="addReaction('❤️')">❤️</button>
+    <button onclick="addReaction('😂')">😂</button>
+    <button onclick="addReaction('😮')">😮</button>
+    <button onclick="addReaction('😢')">😢</button>
+    <button onclick="addReaction('😡')">😡</button>
+    <button onclick="toggleCustomReaction()">➕</button>
 </div>
 
 <!-- NOTIFICATIONS -->
@@ -68,9 +120,24 @@ const socket = io();
 const currentUser = "<%= user.username %>";
 const userPfp = "<%= user.pfp || '/default.png' %>";
 let currentSubs = <%- JSON.stringify(user.subs || []) %>;
+let currentFollowers = <%- JSON.stringify(user.followers || []) %>;
 let sortNewest = true;
 let chatOpen = true;
 let postMedia = { image: null, video: null, gif: null };
+let viewProfileUser = null;
+let isFollowing = false;
+
+// Theme
+const savedTheme = localStorage.getItem('theme') || 'dark';
+document.body.className = savedTheme + '-mode';
+document.querySelector('.theme-btn').textContent = savedTheme === 'dark' ? '🌙' : '☀️';
+
+function toggleTheme() {
+    const isDark = document.body.classList.contains('dark-mode');
+    document.body.className = isDark ? 'light-mode' : 'dark-mode';
+    localStorage.setItem('theme', isDark ? 'light' : 'dark');
+    document.querySelector('.theme-btn').textContent = isDark ? '☀️' : '🌙';
+}
 
 // Format time
 function formatTime(ts) {
@@ -83,7 +150,7 @@ function formatTime(ts) {
     return Math.floor(h / 24) + 'd';
 }
 
-// Update times every minute
+// Update times
 setInterval(() => {
     document.querySelectorAll('.time').forEach(el => {
         el.textContent = formatTime(parseInt(el.dataset.time));
@@ -101,6 +168,11 @@ function handleMedia(input, type) {
     reader.readAsDataURL(input.files[0]);
 }
 
+function handleBanner(input) {
+    if (!input.files[0]) return;
+    alert('Banner will be set on your next post!');
+}
+
 function updateMediaPreview() {
     let html = '';
     ['image', 'video', 'gif'].forEach(type => {
@@ -115,48 +187,111 @@ function updateMediaPreview() {
     document.getElementById('mediaPreview').innerHTML = html;
 }
 
-// Create post - NO PAGE RELOAD
-function createPost() {
-    const content = document.getElementById('postContent').value;
-    if (!content.trim() && !postMedia.image && !postMedia.video && !postMedia.gif) return;
-    
-    fetch('/create-post', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            content: content,
-            image: postMedia.image,
-            video: postMedia.video,
-            gif: postMedia.gif
-        })
+// Custom Emojis
+let customEmojis = [];
+function toggleEmojiPicker() {
+    const picker = document.getElementById('emojiPicker');
+    picker.style.display = picker.style.display === 'none' ? 'block' : 'none';
+    if (picker.style.display === 'block' && customEmojis.length === 0) loadEmojis();
+}
+function loadEmojis() {
+    fetch('/get-emojis').then(res => res.json()).then(data => {
+        customEmojis = data.emojis || [];
+        renderEmojiGrid(customEmojis);
     });
-    
-    postMedia = { image: null, video: null, gif: null };
-    document.getElementById('postContent').value = '';
-    document.getElementById('mediaPreview').innerHTML = '';
+}
+function renderEmojiGrid(emojis) {
+    document.getElementById('emojiGrid').innerHTML = emojis.map(e =>
+        `<img src="${e.url}" class="emoji-item" title="${e.name}" onclick="insertEmoji('${e.url}', '${e.name}')">`
+    ).join('');
+}
+function filterEmojis() {
+    const search = document.getElementById('emojiSearch').value.toLowerCase();
+    renderEmojiGrid(customEmojis.filter(e => e.name.toLowerCase().includes(search)));
+}
+function insertEmoji(url, name) {
+    const textarea = document.getElementById('postContent');
+    textarea.value += `<img src="${url}" class="inline-emoji" title="${name}">`;
+    textarea.focus();
+}
+function uploadEmoji(input) {
+    if (!input.files[0]) return;
+    const name = prompt('Name this emoji:');
+    if (!name) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+        fetch('/upload-emoji', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name, data: e.target.result })
+        }).then(() => { loadEmojis(); alert('Emoji uploaded!'); });
+    };
+    reader.readAsDataURL(input.files[0]);
+}
+
+// Parse content
+function parseContent(text) {
+    if (!text) return '';
+    const parts = text.split(/(<img[^>]+>)/g);
+    return parts.map(part => part.startsWith('<img') ? part : escapeHtml(part)).join('');
+}
+
+// Create post
+async function createPost() {
+    const content = document.getElementById('postContent').value;
+    if (!content.trim() && !postMedia.image && !postMedia.video && !postMedia.gif) {
+        showNotification('Add some content or media!');
+        return;
+    }
+    try {
+        const response = await fetch('/create-post', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ content, image: postMedia.image, video: postMedia.video, gif: postMedia.gif })
+        });
+        const data = await response.json();
+        postMedia = { image: null, video: null, gif: null };
+        document.getElementById('postContent').value = '';
+        document.getElementById('mediaPreview').innerHTML = '';
+        showNotification('Posted!');
+    } catch(e) {
+        console.error(e);
+        showNotification('Error posting');
+    }
 }
 
 // Render posts
 function renderPosts(posts) {
+    console.log('Rendering', posts?.length, 'posts');
     const container = document.getElementById('postsContainer');
+    if (!container) { console.error('Container not found!'); return; }
     container.innerHTML = posts.map(p => {
         const isSubscribed = currentSubs.includes(p.author);
+        const isPinned = p.pinned ? '<span class="pin-badge">📌</span>' : '';
+        const reactionCounts = p.reactions || {};
         return `
         <div class="post-card" id="post-${p.id}">
             ${p.banner ? `<div class="post-banner"><img src="${p.banner}"></div>` : ''}
             <div class="post-header">
-                <img src="${p.pfp || '/default.png'}" class="post-pfp">
+                <img src="${p.pfp || '/default.png'}" class="post-pfp" onclick="openProfile('${p.author}')">
                 <div class="post-info">
-                    <span class="post-author">${escapeHtml(p.author)}</span>
+                    <span class="author-badge" onclick="openProfile('${p.author}')">${escapeHtml(p.author)} ${isPinned}</span>
                     <span class="time" data-time="${p.createdAt}">${formatTime(p.createdAt)}</span>
+                    ${p.isVerified ? '<span class="verified-badge">✓</span>' : ''}
+                    ${isOnline(p.author) ? '<span class="online-dot"></span>' : ''}
                 </div>
-                ${p.author === currentUser ? `<button class="del-btn" onclick="deletePost('${p.id}')">🗑️</button>` : ''}
-                ${p.author !== currentUser ? `<button class="sub-btn" id="sub-btn-${p.author}" onclick="toggleSubscribe('${p.author}')">${isSubscribed ? 'Unsubscribed' : 'Subscribe'}</button>` : ''}
+                ${p.author === currentUser ? `
+                    <button class="del-btn" onclick="deletePost('${p.id}')">🗑️</button>
+                    <button class="pin-btn" onclick="togglePin('${p.id}')">📌</button>
+                ` : ''}
+                ${p.author !== currentUser ? `
+                    <button class="sub-btn" id="sub-btn-${p.author}" onclick="toggleSubscribe('${p.author}')">${isSubscribed ? 'Unsubscribed' : 'Subscribe'}</button>
+                ` : ''}
             </div>
-            ${p.content ? `<p class="post-text">${escapeHtml(p.content)}</p>` : ''}
-            ${p.image ? `<img src="${p.image}" class="post-media" onclick="openMedia('${p.image}')">` : ''}
+            ${p.content ? `<p class="post-text">${parseContent(p.content)}</p>` : ''}
+            ${p.image ? `<img src="${p.image}" class="post-media">` : ''}
             ${p.gif ? `<img src="${p.gif}" class="post-media post-gif">` : ''}
-            ${p.video ? `<video src="${p.video}" controls class="post-media"></video>` : ''}
+            ${p.video ? `<video src="${p.video}" controls class="post-media" ${soundOn ? '' : 'muted'}></video>` : ''}
             <div class="post-actions">
                 <button class="action-btn like-btn ${p.likes?.includes(currentUser) ? 'liked' : ''}" onclick="likePost('${p.id}')">
                     👍 <span>${p.likes?.length || 0}</span>
@@ -164,51 +299,144 @@ function renderPosts(posts) {
                 <button class="action-btn dislike-btn ${p.dislikes?.includes(currentUser) ? 'disliked' : ''}" onclick="dislikePost('${p.id}')">
                     👎 <span>${p.dislikes?.length || 0}</span>
                 </button>
+                <button class="action-btn reaction-btn" onclick="showReactions('${p.id}')">
+                    ${getReactionSummary(reactionCounts)}
+                </button>
+                <button class="share-btn" onclick="sharePost('${p.id}')">🔗 Share</button>
             </div>
             <div class="comment-section">
+                <div class="comment-sort-bar">
+                    <select class="comment-sort" onchange="sortComments('${p.id}', this.value)">
+                        <option value="newest">Newest</option>
+                        <option value="oldest">Oldest</option>
+                        <option value="liked">Most Liked</option>
+                    </select>
+                    <span class="comment-count">💬 ${p.comments?.length || 0} comments</span>
+                </div>
                 <div class="comment-input-box">
                     <input type="text" id="comment-input-${p.id}" placeholder="Add a comment..." onkeypress="if(event.key==='Enter')addComment('${p.id}')">
                     <button onclick="addComment('${p.id}')">Comment</button>
                 </div>
-                <div class="comments-list">
-                    ${(p.comments || []).map(c => `
-                        <div class="comment-item">
-                            <img src="${c.pfp || '/default.png'}" class="comment-pfp">
-                            <div class="comment-body">
-                                <div class="comment-top">
-                                    <span class="comment-author">${escapeHtml(c.author)}</span>
-                                    <span class="time" data-time="${c.createdAt}">${formatTime(c.createdAt)}</span>
-                                </div>
-                                <p class="comment-text">${escapeHtml(c.text)}</p>
-                                <div class="comment-actions">
-                                    <button class="c-action-btn ${c.likes?.includes(currentUser) ? 'liked' : ''}" onclick="likeComment('${p.id}','${c.id}')">👍 ${c.likes?.length || 0}</button>
-                                    <button class="c-action-btn ${c.dislikes?.includes(currentUser) ? 'disliked' : ''}" onclick="dislikeComment('${p.id}','${c.id}')">👎 ${c.dislikes?.length || 0}</button>
-                                    <button class="c-action-btn" onclick="toggleReplyInput('reply-input-${p.id}-${c.id}')">Reply</button>
-                                    ${c.author === currentUser ? `<button class="c-del-btn" onclick="deleteComment('${p.id}','${c.id}')">Delete</button>` : ''}
-                                </div>
-                                <div class="reply-input-box" id="reply-input-${p.id}-${c.id}" style="display:none;">
-                                    <input type="text" id="reply-text-${p.id}-${c.id}" placeholder="Write a reply..." onkeypress="if(event.key==='Enter')addReply('${p.id}','${c.id}')">
-                                    <button onclick="addReply('${p.id}','${c.id}')">Send</button>
-                                </div>
-                                <div class="replies-list">
-                                    ${(c.replies || []).map(r => `
-                                        <div class="reply-item">
-                                            <img src="${r.pfp || '/default.png'}" class="reply-pfp">
-                                            <div class="reply-body">
-                                                <span class="reply-author">${escapeHtml(r.author)}</span>
-                                                <span class="time" data-time="${r.createdAt}">${formatTime(r.createdAt)}</span>
-                                                <p class="reply-text">${escapeHtml(r.text)}</p>
-                                            </div>
-                                        </div>
-                                    `).join('')}
-                                </div>
-                            </div>
-                        </div>
-                    `).join('')}
+                <div class="comments-list" id="comments-${p.id}">
+                    ${renderComments(p.comments || [], p.id, currentUser, p.author)}
                 </div>
             </div>
         </div>
     `}).join('');
+}
+
+function getReactionSummary(reactions) {
+    if (!reactions || Object.keys(reactions).length === 0) return '😀';
+    return Object.entries(reactions).map(([emoji, users]) => `${emoji}:${users.length}`).join(' ');
+}
+
+function showReactions(postId) {
+    const popup = document.getElementById('reactionsPopup');
+    popup.style.display = popup.style.display === 'none' ? 'flex' : 'none';
+    popup.dataset.postId = postId;
+}
+
+function addReaction(emoji) {
+    const postId = document.getElementById('reactionsPopup').dataset.postId;
+    fetch('/react/' + postId, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ emoji })
+    });
+    document.getElementById('reactionsPopup').style.display = 'none';
+}
+
+function toggleCustomReaction() {
+    const emoji = prompt('Enter a custom emoji:');
+    if (emoji) addReaction(emoji);
+}
+
+function sharePost(postId) {
+    const url = window.location.origin + '/post/' + postId;
+    navigator.clipboard.writeText(url);
+    showNotification('Link copied!');
+}
+
+function togglePin(postId) {
+    fetch('/pin/' + postId, { method: 'POST' });
+}
+
+function renderComments(comments, postId, currentUser, postAuthor) {
+    if (!comments || comments.length === 0) return '<p class="no-comments">No comments yet. Be the first!</p>';
+    
+    const pinned = comments.filter(c => c.isPinned);
+    const regular = comments.filter(c => !c.isPinned);
+    
+    const renderComment = (c, isReply = false) => {
+        const isEdited = c.editedAt ? '<span class="edited-label">(edited)</span>' : '';
+        const isPinnedBadge = c.isPinned ? '<span class="pinned-badge">📌</span>' : '';
+        const canPin = !isReply && currentUser === postAuthor;
+        const canEdit = c.author === currentUser;
+        const canDelete = c.author === currentUser;
+        
+        const repliesHtml = c.replies && c.replies.length > 0 
+            ? `<div class="replies-toggle" onclick="toggleReplies('${postId}-${c.id}')">Show ${c.replies.length} replies ▼</div>
+               <div class="replies-list" id="replies-${postId}-${c.id}">${c.replies.map(r => renderComment(r, true)).join('')}</div>`
+            : '';
+        
+        return `
+        <div class="comment-item ${c.isPinned ? 'pinned-comment' : ''}">
+            <img src="${c.pfp || '/default.png'}" class="comment-pfp" onclick="openProfile('${c.author}')">
+            <div class="comment-body">
+                <div class="comment-top">
+                    <span class="comment-author" onclick="openProfile('${c.author}')">${escapeHtml(c.author)}</span>
+                    ${isPinnedBadge}
+                    <span class="time" data-time="${c.createdAt}">${formatTime(c.createdAt)}</span>
+                    ${isEdited}
+                </div>
+                <p class="comment-text" id="comment-text-${c.id}">${parseContent(c.text)}</p>
+                <div class="comment-actions">
+                    <button class="c-action-btn ${c.likes?.includes(currentUser) ? 'liked' : ''}" onclick="likeComment('${postId}','${c.id}')">👍 ${c.likes?.length || 0}</button>
+                    <button class="c-action-btn ${c.dislikes?.includes(currentUser) ? 'disliked' : ''}" onclick="dislikeComment('${postId}','${c.id}')">👎 ${c.dislikes?.length || 0}</button>
+                    <button class="c-action-btn" onclick="toggleReplyInput('reply-input-${postId}-${c.id}')">Reply</button>
+                    ${canPin ? `<button class="c-action-btn pin-btn" onclick="pinComment('${postId}','${c.id}')">${c.isPinned ? 'Unpin' : '📌 Pin'}</button>` : ''}
+                    ${canEdit ? `<button class="c-action-btn" onclick="editComment('${postId}','${c.id}','${c.id}')">✏️ Edit</button>` : ''}
+                    ${canDelete ? `<button class="c-del-btn" onclick="deleteComment('${postId}','${c.id}')">Delete</button>` : ''}
+                </div>
+                <div class="reply-input-box" id="reply-input-${postId}-${c.id}" style="display:none;">
+                    <input type="text" id="reply-text-${postId}-${c.id}" placeholder="Reply to ${c.author}..." onkeypress="if(event.key==='Enter')addReply('${postId}','${c.id}')">
+                    <button onclick="addReply('${postId}','${c.id}')">Send</button>
+                </div>
+                ${repliesHtml}
+            </div>
+        </div>`;
+    };
+    
+    return pinned.map(c => renderComment(c)).join('') + regular.map(c => renderComment(c)).join('');
+}
+
+function pinComment(postId, commentId) {
+    fetch('/pin-comment/' + postId + '/' + commentId, { method: 'POST' });
+}
+
+function editComment(postId, commentId, type) {
+    const textEl = type === 'reply' 
+        ? document.getElementById('reply-text-' + postId + '-' + commentId)
+        : document.getElementById('comment-text-' + postId + '-' + commentId);
+    const newText = prompt('Edit your comment:', textEl?.textContent || '');
+    if (newText && newText.trim()) {
+        fetch('/edit-' + type + '/' + postId + '/' + commentId, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ text: newText })
+        });
+    }
+}
+
+function toggleReplies(id) {
+    const el = document.getElementById('replies-' + id);
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+let soundOn = true;
+function toggleSound() {
+    soundOn = !soundOn;
+    document.querySelectorAll('video').forEach(v => v.muted = !soundOn);
 }
 
 function escapeHtml(text) {
@@ -217,83 +445,113 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// Toggle Subscribe/Unsubscribe
+// Profile
+function openProfile(username) {
+    viewProfileUser = username;
+    fetch('/get-user/' + username)
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById('modalBanner').innerHTML = data.user.banner ? `<img src="${data.user.banner}">` : '';
+            document.getElementById('modalPfp').src = data.user.pfp || '/default.png';
+            document.getElementById('modalName').innerHTML = (data.user.username || username) + (data.user.isVerified ? ' <span class="verified-badge">✓</span>' : '');
+            document.getElementById('modalSubs').textContent = (data.user.subs?.length || 0) + ' Subs';
+            document.getElementById('modalFollowers').textContent = (data.user.followers?.length || 0) + ' Followers';
+            isFollowing = data.user.followers?.includes(currentUser);
+            document.getElementById('modalFollowBtn').textContent = isFollowing ? 'Unfollow' : 'Follow';
+            document.getElementById('modalPosts').innerHTML = data.posts.map(p => `
+                <div class="mini-post" onclick="location.href='/'">
+                    <p>${p.content?.substring(0, 50)}...</p>
+                    <span class="time" data-time="${p.createdAt}">${formatTime(p.createdAt)}</span>
+                </div>
+            `).join('');
+            document.getElementById('profileModal').style.display = 'flex';
+        });
+}
+
+function closeProfile() {
+    document.getElementById('profileModal').style.display = 'none';
+}
+
+function toggleFollow() {
+    fetch('/follow/' + viewProfileUser, { method: 'POST' });
+    isFollowing = !isFollowing;
+    document.getElementById('modalFollowBtn').textContent = isFollowing ? 'Unfollow' : 'Follow';
+}
+
+// Notifications
+function toggleNotifications() {
+    const panel = document.getElementById('notifPanel');
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+function addNotification(msg, type = 'info') {
+    const list = document.getElementById('notifList');
+    const div = document.createElement('div');
+    div.className = 'notif-item ' + type;
+    div.textContent = msg;
+    list.prepend(div);
+}
+
+// Subscribe
 function toggleSubscribe(username) {
     fetch('/subscribe/' + username, { method: 'POST' });
-    
     if (currentSubs.includes(username)) {
         currentSubs = currentSubs.filter(s => s !== username);
-        socket.emit('unsubscribe', { user: username, subscriber: currentUser });
     } else {
         currentSubs.push(username);
-        socket.emit('subscribe', { user: username, subscriber: currentUser });
     }
-    
     const btn = document.getElementById('sub-btn-' + username);
-    if (btn) {
-        btn.textContent = currentSubs.includes(username) ? 'Subscribed' : 'Subscribe';
-    }
+    if (btn) btn.textContent = currentSubs.includes(username) ? 'Subscribed' : 'Subscribe';
 }
 
-// Like/Dislike posts
-function likePost(postId) {
-    fetch('/like/' + postId, { method: 'POST' });
+// Posts actions
+function likePost(postId) { 
+    console.log('Liking post:', postId);
+    fetch('/like/' + postId, { method: 'POST' })
+        .then(r => r.json())
+        .then(d => console.log('Like result:', d))
+        .catch(e => console.error('Like error:', e));
 }
-
-function dislikePost(postId) {
-    fetch('/dislike/' + postId, { method: 'POST' });
+function dislikePost(postId) { 
+    console.log('Disliking post:', postId);
+    fetch('/dislike/' + postId, { method: 'POST' })
+        .then(r => r.json())
+        .catch(e => console.error('Dislike error:', e));
 }
-
-// Comments
 function addComment(postId) {
     const input = document.getElementById('comment-input-' + postId);
     const text = input.value;
-    if (!text.trim()) return;
-    
-    fetch('/comment/' + postId, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ text: text })
+    if (!text.trim()) {
+        showNotification('Add a comment first!');
+        return;
+    }
+    console.log('Adding comment to:', postId);
+    fetch('/comment/' + postId, { 
+        method: 'POST', 
+        headers: {'Content-Type': 'application/json'}, 
+        body: JSON.stringify({ text }) 
     });
     input.value = '';
+    showNotification('Comment added!');
 }
-
-function likeComment(postId, commentId) {
-    fetch('/like-comment/' + postId + '/' + commentId, { method: 'POST' });
+function likeComment(postId, commentId) { 
+    fetch('/like-comment/' + postId + '/' + commentId, { method: 'POST' }); 
 }
-
-function dislikeComment(postId, commentId) {
-    fetch('/dislike-comment/' + postId + '/' + commentId, { method: 'POST' });
+function dislikeComment(postId, commentId) { 
+    fetch('/dislike-comment/' + postId + '/' + commentId, { method: 'POST' }); 
 }
-
-function deleteComment(postId, commentId) {
-    if (confirm('Delete this comment?')) {
-        fetch('/delete-comment/' + postId + '/' + commentId, { method: 'POST' });
-    }
-}
-
+function deleteComment(postId, commentId) { if (confirm('Delete?')) fetch('/delete-comment/' + postId + '/' + commentId, { method: 'POST' }); }
+function deletePost(postId) { if (confirm('Delete?')) fetch('/delete-post/' + postId, { method: 'POST' }); }
 function toggleReplyInput(id) {
     const el = document.getElementById(id);
     el.style.display = el.style.display === 'none' ? 'flex' : 'none';
 }
-
 function addReply(postId, commentId) {
     const input = document.getElementById('reply-text-' + postId + '-' + commentId);
     const text = input.value;
     if (!text.trim()) return;
-    
-    fetch('/reply/' + postId + '/' + commentId, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ text: text })
-    });
+    fetch('/reply/' + postId + '/' + commentId, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ text }) });
     input.value = '';
-}
-
-function deletePost(postId) {
-    if (confirm('Delete this post?')) {
-        fetch('/delete-post/' + postId, { method: 'POST' });
-    }
 }
 
 // Chat
@@ -303,69 +561,118 @@ function sendChat() {
     socket.emit('chat message', { user: currentUser, text: input.value, pfp: userPfp });
     input.value = '';
 }
-
 function toggleChat() {
     chatOpen = !chatOpen;
-    const messages = document.getElementById('chatMessages');
-    const toggle = document.getElementById('chatToggle');
-    
-    if (chatOpen) {
-        messages.style.display = 'block';
-        toggle.textContent = '▼';
-    } else {
-        messages.style.display = 'none';
-        toggle.textContent = '▲';
+    document.getElementById('chatMessages').style.display = chatOpen ? 'block' : 'none';
+    document.getElementById('chatToggle').textContent = chatOpen ? '▼' : '▲';
+}
+
+// Stories
+let storyMedia = null;
+function createStory() {
+    const content = prompt('What\'s happening? (leave empty for image only)');
+    if (content || storyMedia) {
+        fetch('/create-story', { 
+            method: 'POST', 
+            headers: {'Content-Type': 'application/json'}, 
+            body: JSON.stringify({ content: content || '', image: storyMedia }) 
+        });
+        storyMedia = null;
+        showNotification('Story posted!');
     }
 }
 
-// Socket events
-socket.on('chatHistory', messages => {
-    const container = document.getElementById('chatMessages');
-    container.innerHTML = messages.map(msg => `
-        <div class="chat-msg">
-            <img src="${msg.pfp || '/default.png'}" class="chat-pfp">
-            <span class="chat-user">${escapeHtml(msg.user)}:</span> ${escapeHtml(msg.text)}
+function handleStoryMedia(input) {
+    const file = input.files[0];
+    if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            storyMedia = e.target.result;
+            showNotification('Image added to story!');
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+function renderStories(stories) {
+    const container = document.getElementById('storiesScroll');
+    if (!container) return;
+    
+    const myStories = stories.filter(s => s.author === currentUser);
+    const otherStories = stories.filter(s => s.author !== currentUser);
+    
+    container.innerHTML = [...myStories, ...otherStories].map(s => `
+        <div class="story-item" onclick="viewStory('${s.id}')">
+            <img src="${s.pfp || '/default.png'}" class="story-pfp" style="${s.author === currentUser ? 'border-color:#3ea6ff' : ''}">
+            <span>${s.author}</span>
         </div>
     `).join('');
-    container.scrollTop = container.scrollHeight;
-});
+}
 
-socket.on('chat message', msg => {
-    const container = document.getElementById('chatMessages');
-    const div = document.createElement('div');
-    div.className = 'chat-msg';
-    div.innerHTML = `<img src="${msg.pfp || '/default.png'}" class="chat-pfp"><span class="chat-user">${escapeHtml(msg.user)}:</span> ${escapeHtml(msg.text)}`;
-    container.appendChild(div);
-    container.scrollTop = container.scrollHeight;
-});
+function viewStory(id) {
+    fetch('/get-stories')
+        .then(res => res.json())
+        .then(data => {
+            const story = data.stories.find(s => s.id === id);
+            if (story && story.image) {
+                window.open(story.image, '_blank');
+            }
+        });
+}
 
-socket.on('postUpdate', posts => {
-    renderPosts(posts);
-});
-
-socket.on('subUpdate', data => {
-    if (data.username === currentUser) {
-        document.getElementById('mySubCount').textContent = data.count;
-    }
-});
-
-socket.on('notification', msg => {
+function showNotification(msg) {
     const div = document.createElement('div');
     div.className = 'toast-notification';
     div.textContent = msg;
     document.body.appendChild(div);
     setTimeout(() => div.remove(), 3000);
-});
+}
+}
 
-// Sort
+// Online status
+const onlineUsers = new Set();
+function isOnline(user) { return onlineUsers.has(user); }
+socket.on('online', user => { onlineUsers.add(user); });
+socket.on('offline', user => { onlineUsers.delete(user); });
+
+// Socket events
+socket.on('chatHistory', msgs => {
+    document.getElementById('chatMessages').innerHTML = msgs.map(m =>
+        `<div class="chat-msg"><img src="${m.pfp || '/default.png'}" class="chat-pfp"><span class="chat-user">${escapeHtml(m.user)}:</span> ${parseContent(m.text)}</div>`
+    ).join('');
+});
+socket.on('chat message', msg => {
+    const div = document.createElement('div');
+    div.className = 'chat-msg';
+    div.innerHTML = `<img src="${msg.pfp || '/default.png'}" class="chat-pfp"><span class="chat-user">${escapeHtml(msg.user)}:</span> ${parseContent(msg.text)}`;
+    document.getElementById('chatMessages').appendChild(div);
+});
+socket.on('postUpdate', posts => {
+    console.log('Posts received:', posts?.length);
+    renderPosts(posts);
+});
+socket.on('storiesUpdate', renderStories);
+socket.on('subUpdate', data => {
+    if (data.username === currentUser) document.getElementById('mySubCount').textContent = data.count;
+});
+socket.on('notification', msg => { addNotification(msg); showNotification(msg); });
+
+function showNotification(msg) {
+    const div = document.createElement('div');
+    div.className = 'toast-notification';
+    div.textContent = msg;
+    document.body.appendChild(div);
+    setTimeout(() => div.remove(), 3000);
+}
+
 function toggleSort() {
     sortNewest = !sortNewest;
-    document.getElementById('sortLabel').textContent = sortNewest ? 'Newest' : 'Popular';
+    document.getElementById('sortLabel').textContent = sortNewest ? '📆 Newest' : '🔥 Popular';
     socket.emit('getPosts', { sort: sortNewest ? 'newest' : 'popular' });
 }
 
-// Load posts on start
 socket.emit('getPosts', { sort: 'newest' });
+socket.emit('online', currentUser);
 </script>
 
 </body>
